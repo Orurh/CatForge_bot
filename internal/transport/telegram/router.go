@@ -87,7 +87,7 @@ func (r *Router) buildCtxFromMessage(ctx context.Context, m *Message) (*tgCtx, e
 		tgID:     tgID,
 		chatID:   m.Chat.ID,
 		chatType: chatType,
-		now:      r.app.Clock.Now(),
+		now:      r.app.Now(),
 	}, nil
 }
 
@@ -128,7 +128,7 @@ func (r *Router) buildCtxFromCallback(ctx context.Context, cq *CallbackQuery) (*
 			tgID:     tgID,
 			chatID:   cq.Message.Chat.ID,
 			chatType: chatType,
-			now:      r.app.Clock.Now(),
+			now:      r.app.Now(),
 		},
 		msgID: cq.Message.MessageID,
 		data:  strings.TrimSpace(cq.Data),
@@ -188,6 +188,9 @@ func (r *Router) onPublicCommand(ctx context.Context, tgc *tgCtx, cmd string) {
 		// привяжем чат как "домашний" для логов охоты из лички.
 		r.bindHomeChat(ctx, tgc, true /*silent*/)
 		r.renderPublicStart(ctx, tgc)
+	case "/daily":
+		// daily персональный — ведём в личку
+		r.sendText(ctx, tgc.chatID, "🎁 Ежедневная награда доступна в личке. Открой бота и нажми /daily.")
 	case "/train", "/hunt":
 		r.doTrainPublic(ctx, tgc)
 	case "/stats":
@@ -204,7 +207,7 @@ func (r *Router) bindHomeChat(ctx context.Context, tgc *tgCtx, silent bool) {
 	if tgc.chatType == "" || tgc.chatType == "private" {
 		return
 	}
-	if err := r.app.Users.SetHomeChat(ctx, tgc.userID, tgc.chatID, tgc.chatType); err != nil {
+	if err := r.app.SetHomeChat(ctx, tgc.userID, tgc.chatID, tgc.chatType); err != nil {
 		if !silent {
 			r.sendText(ctx, tgc.chatID, "Не удалось привязать чат. Попробуй позже.")
 		}
@@ -219,7 +222,7 @@ func (r *Router) unbindHomeChat(ctx context.Context, tgc *tgCtx) {
 	if tgc.chatType == "" || tgc.chatType == "private" {
 		return
 	}
-	if err := r.app.Users.SetHomeChat(ctx, tgc.userID, 0, ""); err != nil {
+	if err := r.app.SetHomeChat(ctx, tgc.userID, 0, ""); err != nil {
 		r.sendText(ctx, tgc.chatID, "Не удалось отвязать чат. Попробуй позже.")
 		return
 	}
@@ -236,14 +239,16 @@ func (r *Router) onPrivateCommand(ctx context.Context, tgc *tgCtx, cmd, args str
 		r.renderProfileTo(ctx, tgc.userID, tgc.now, targetFromTG(tgc))
 	case "/train", "/hunt":
 		r.renderTrainingTo(ctx, tgc.userID, tgc.now, targetFromTG(tgc), "")
+	case "/daily":
+		r.renderDailyTo(ctx, tgc.userID, tgc.now, targetFromTG(tgc))
 	case "/reset":
 		r.renderResetAskTo(ctx, tgc.userID, targetFromTG(tgc))
 	case "/name":
 		r.renameCatCommand(ctx, tgc, args)
 	case "/skip":
-		_ = r.app.Users.SetPendingAction(ctx, tgc.userID, "")
+		_ = r.app.SetPendingAction(ctx, tgc.userID, "")
 	default:
-		r.sendText(ctx, tgc.chatID, "Команды: /start, /menu, /profile, /hunt (/train), /reset, /name")
+		r.sendText(ctx, tgc.chatID, "Команды: /start, /menu, /profile, /hunt (/train), /daily, /reset, /name")
 	}
 }
 
@@ -271,6 +276,10 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 	switch cbc.data {
 	case CBNavMenu:
 		r.renderMenuTo(ctx, cbc.userID, targetFromCB(cbc))
+	case CBMenuDaily, CBDailyRefresh:
+		r.renderDailyTo(ctx, cbc.userID, cbc.now, targetFromCB(cbc))
+	case CBDailyClaim:
+		r.doDailyClaimTo(ctx, cbc.userID, cbc.now, targetFromCB(cbc))
 	case CBResetAsk:
 		r.renderResetAskTo(ctx, cbc.userID, targetFromCB(cbc))
 	case CBResetConfirm:
@@ -359,7 +368,7 @@ func (r *Router) chooseStarter(ctx context.Context, cbc *cbCtx) {
 		return
 	}
 
-	_ = r.app.Users.SetPendingAction(ctx, cbc.userID, app.PendingAwaitCatName)
+	_ = r.app.SetPendingAction(ctx, cbc.userID, app.PendingAwaitCatName)
 
 	photo := views.CatAvatarURL(r.publicBaseURL, cat)
 	caption := "Дом кота:\n" +
@@ -439,7 +448,7 @@ func (r *Router) renderNameAsk(ctx context.Context, cbc *cbCtx) {
 			"Сначала выбери кота через /start.", MainMenuKeyboard())
 		return
 	}
-	_ = r.app.Users.SetPendingAction(ctx, cbc.userID, app.PendingAwaitCatName)
+	_ = r.app.SetPendingAction(ctx, cbc.userID, app.PendingAwaitCatName)
 
 	photo := views.CatAvatarURL(r.publicBaseURL, cat)
 	text := "✏️ Имя кота\n\n" +
@@ -451,12 +460,12 @@ func (r *Router) renderNameAsk(ctx context.Context, cbc *cbCtx) {
 }
 
 func (r *Router) nameSkip(ctx context.Context, cbc *cbCtx) {
-	_ = r.app.Users.SetPendingAction(ctx, cbc.userID, "")
+	_ = r.app.SetPendingAction(ctx, cbc.userID, "")
 	r.renderProfileTo(ctx, cbc.userID, cbc.now, targetFromCB(cbc))
 }
 
 func (r *Router) tryConsumePendingCatName(ctx context.Context, tgc *tgCtx, text string) bool {
-	a, err := r.app.Users.GetPendingAction(ctx, tgc.userID)
+	a, err := r.app.GetPendingAction(ctx, tgc.userID)
 	if err != nil || a != app.PendingAwaitCatName {
 		return false
 	}
@@ -478,7 +487,7 @@ func (r *Router) tryConsumePendingCatName(ctx context.Context, tgc *tgCtx, text 
 		return true
 	}
 
-	_ = r.app.Users.SetPendingAction(ctx, tgc.userID, "")
+	_ = r.app.SetPendingAction(ctx, tgc.userID, "")
 	r.sendText(ctx, tgc.chatID, "Имя установлено: "+cat.Name+"\nОткрой «Профиль кота», чтобы увидеть обновление.")
 	return true
 }
@@ -498,7 +507,7 @@ func (r *Router) renameCatCommand(ctx context.Context, tgc *tgCtx, args string) 
 		r.sendText(ctx, tgc.chatID, "Не удалось переименовать. Попробуй позже.")
 		return
 	}
-	_ = r.app.Users.SetPendingAction(ctx, tgc.userID, "")
+	_ = r.app.SetPendingAction(ctx, tgc.userID, "")
 	r.sendText(ctx, tgc.chatID, "Имя обновлено: "+cat.Name)
 }
 
@@ -529,8 +538,8 @@ func (r *Router) doTrainPrivate(ctx context.Context, cbc *cbCtx) {
 		return
 	}
 
-	head := views.FormatTrainingResultText(cat, r.app.Clock.Now(), res)
-	r.renderTrainingTo(ctx, cbc.userID, r.app.Clock.Now(), targetFromCB(cbc), head)
+	head := views.FormatTrainingResultText(cat, r.app.Now(), res)
+	r.renderTrainingTo(ctx, cbc.userID, r.app.Now(), targetFromCB(cbc), head)
 }
 
 func (r *Router) renderArena(ctx context.Context, cbc *cbCtx) {
@@ -635,4 +644,69 @@ func (r *Router) buildTrainingScreen(cat *domain.Cat, now time.Time, prefix stri
 		caption:  caption,
 		kb:       TrainingKeyboard(canTrain),
 	}
+}
+
+
+func (r *Router) renderDailyTo(ctx context.Context, userID int64, now time.Time, t uiTarget) {
+	cat, err := r.app.Profile.GetCat(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoCat) {
+			r.showScreen(ctx, t, screen{
+				photoURL: views.StarterScreenURL(r.publicBaseURL),
+				caption:  "Сначала выбери кота через /start.",
+				kb:       StarterBreedKeyboard(),
+			})
+			return
+		}
+		r.showScreen(ctx, t, screen{
+			photoURL: views.StarterScreenURL(r.publicBaseURL),
+			caption:  "Не удалось загрузить кота. Попробуй позже.",
+			kb:       MainMenuKeyboard(),
+		})
+		return
+	}
+
+	v, err := r.app.Daily.State(ctx, userID)
+	if err != nil {
+		r.showScreen(ctx, t, screen{
+			photoURL: r.photoForUser(ctx, userID),
+			caption:  "Не удалось загрузить ежедневную награду. Попробуй позже.",
+			kb:       MainMenuKeyboard(),
+		})
+		return
+	}
+
+	text := views.FormatDailyScreen(cat, v, now)
+	r.showScreen(ctx, t, screen{
+		photoURL: views.CatAvatarURL(r.publicBaseURL, cat),
+		caption:  text,
+		kb:       DailyKeyboard(v.CanClaim),
+	})
+}
+
+func (r *Router) doDailyClaimTo(ctx context.Context, userID int64, now time.Time, t uiTarget) {
+	cat, res, err := r.app.Daily.Claim(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoCat) {
+			r.showScreen(ctx, t, screen{
+				photoURL: views.StarterScreenURL(r.publicBaseURL),
+				caption:  "Сначала выбери кота через /start.",
+				kb:       StarterBreedKeyboard(),
+			})
+			return
+		}
+		r.showScreen(ctx, t, screen{
+			photoURL: r.photoForUser(ctx, userID),
+			caption:  "Не удалось получить награду. Попробуй позже.",
+			kb:       DailyKeyboard(false),
+		})
+		return
+	}
+
+	text := views.FormatDailyClaimResult(cat, res, now)
+	r.showScreen(ctx, t, screen{
+		photoURL: views.CatAvatarURL(r.publicBaseURL, cat),
+		caption:  text,
+		kb:       DailyKeyboard(false),
+	})
 }

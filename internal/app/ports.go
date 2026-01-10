@@ -37,3 +37,8 @@ type CatRepository interface {
 	Train(ctx context.Context, userID int64, now time.Time) (*domain.Cat, domain.TrainResult, error)
 	SetName(ctx context.Context, userID int64, name string) (*domain.Cat, error)
 }
+
+type DailyRepository interface {
+	GetState(ctx context.Context, userID int64) (domain.DailyState, error)
+	Claim(ctx context.Context, userID int64, now time.Time) (*domain.Cat, domain.DailyClaimResult, error)
+}

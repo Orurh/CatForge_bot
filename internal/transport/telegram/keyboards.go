@@ -23,9 +23,10 @@ func MainMenuKeyboard() map[string]any {
 				{"text": "Охота", "callback_data": CBMenuTrain},
 			},
 			{
+				{"text": "🎁 Ежедневка", "callback_data": CBMenuDaily},
 				{"text": "Экспедиция", "callback_data": CBMenuExp},
-				{"text": "Арена", "callback_data": CBMenuPVP},
 			},
+			{{"text": "Арена", "callback_data": CBMenuPVP}},
 			{{"text": "♻️ Убить котика и начать заново", "callback_data": CBResetAsk}},
 		},
 	}
