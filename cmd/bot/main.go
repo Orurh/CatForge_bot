@@ -71,8 +71,9 @@ func main() {
 	// event log adapter (telegram)
 	sender := tg.NewSender(cfg.TelegramToken, logger.With(logx.String("component", "telegram_sender")))
 	ev := tg.NewTelegramEventLog(sender, logger.With(logx.String("component", "telegram_eventlog")))
+	arena := postgres.NewArenaRepo(pool)
 
-	a := app.New(users, cats, daily, clock, rng, ev)
+	a := app.New(users, cats, daily, arena, clock, rng, ev)
 
 	// Telegram webhook registration
 	if cfg.PublicBaseURL == "" {

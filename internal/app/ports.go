@@ -19,6 +19,8 @@ type RNG = randx.RNG
 // Transport implements it (telegram adapter); domain/app layer only depends on this interface.
 type EventLog interface {
 	Training(ctx context.Context, e TrainingEvent) error
+	DailyClaim(ctx context.Context, e DailyClaimEvent) error
+    ArenaFight(ctx context.Context, e ArenaFightEvent) error
 }
 
 type UserRepository interface {
@@ -41,4 +43,15 @@ type CatRepository interface {
 type DailyRepository interface {
 	GetState(ctx context.Context, userID int64) (domain.DailyState, error)
 	Claim(ctx context.Context, userID int64, now time.Time) (*domain.Cat, domain.DailyClaimResult, error)
+}
+
+type ArenaRepository interface {
+	GetState(ctx context.Context, userID int64) (domain.ArenaState, error)
+	SaveState(ctx context.Context, userID int64, st domain.ArenaState) error
+
+	// 3 цели на выбор
+	FindOpponents(ctx context.Context, userID int64, attackerPower int, seed string) ([]domain.ArenaOpponent, error)
+
+	// атомарный бой: списать билет, пересчитать рейтинг, записать матч
+	Fight(ctx context.Context, userID int64, opponentUserID int64, seed string) (domain.ArenaState, domain.ArenaFightResult, error)
 }

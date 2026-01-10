@@ -18,6 +18,10 @@ const (
 	CBNameAsk        = "name:ask"
 	CBNameSkip       = "name:skip"
 	CBNoop           = "noop"
+
+	CBArenaRefresh   = "arena:refresh"
+	CBArenaReroll    = "arena:reroll"
+	CBArenaFightPref = "arena:fight:" 
 )
 
 const CBStarterPrefix = "starter:"

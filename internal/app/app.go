@@ -15,6 +15,7 @@ type App struct {
 	Profile  *ProfileService
 	Training *TrainingService
 	Daily    *DailyService
+	Arena *ArenaService
 }
 
 // type DailyRepository interface {
@@ -24,7 +25,7 @@ type App struct {
 
 
 
-func New(users UserRepository, cats CatRepository, daily DailyRepository, clock Clock, rng RNG, ev EventLog) *App {
+func New(users UserRepository, cats CatRepository, daily DailyRepository, arena ArenaRepository, clock Clock, rng RNG, ev EventLog) *App {
 	a := &App{
 		users:    users,
 		clock:    clock,
@@ -34,9 +35,11 @@ func New(users UserRepository, cats CatRepository, daily DailyRepository, clock 
 	a.Starter = NewStarterService(cats, rng)
 	a.Profile = NewProfileService(cats)
 	a.Training = NewTrainingService(cats, users, clock, ev)
-	a.Daily = NewDailyService(daily, clock)
+	a.Daily = NewDailyService(daily, users, cats, clock, ev)
+	a.Arena = NewArenaService(arena, cats, clock)
 	return a
 }
+
 
 func (a *App) Now() time.Time { return a.clock.Now() }
 

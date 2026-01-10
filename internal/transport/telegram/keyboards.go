@@ -86,13 +86,3 @@ func TrainingKeyboard(canTrain bool) map[string]any {
 		},
 	}
 }
-
-func ArenaKeyboard() map[string]any {
-	return map[string]any{
-		"inline_keyboard": [][]map[string]any{
-			{
-				{"text": "⬅️ Назад", "callback_data": CBNavMenu},
-			},
-		},
-	}
-}

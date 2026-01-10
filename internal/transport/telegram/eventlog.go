@@ -56,3 +56,36 @@ func (l *TelegramEventLog) Training(ctx context.Context, e app.TrainingEvent) er
 	}
 	return nil
 }
+
+func (l *TelegramEventLog) DailyClaim(ctx context.Context, e app.DailyClaimEvent) error {
+    badge := publicCatBadge(e.Breed, 1)
+    name := e.CatName
+    if name == "" { name = "Кот" }
+    line := "🎁 " + badge + " " + name +
+        " получает ежедневку: +" + itoa64(e.XPGain) + " XP, +" + itoa(e.EnergyGain) +
+        " энергии • серия " + itoa(e.Streak) + " дн."
+    if err := l.s.Text(ctx, e.ChatID, line); err != nil {
+        l.log.Error("eventlog send failed", logx.Any("err", err))
+        return err
+    }
+    return nil
+}
+
+func (l *TelegramEventLog) ArenaFight(ctx context.Context, e app.ArenaFightEvent) error {
+    badge := publicCatBadge(e.Breed, 1)
+    name := e.CatName
+    if name == "" { name = "Кот" }
+    outcome := "❌ поражение"
+    if e.Won { outcome = "✅ победа" }
+
+    line := "🏟️ " + badge + " " + name + ": " + outcome +
+        " • +" + itoa64(e.XPGain) + " XP" +
+        " • рейтинг " + itoa(e.NewRating) + " (" + itoa(e.RatingDelta) + ")" +
+        " • ярость " + itoa(e.RageAfter)
+
+    if err := l.s.Text(ctx, e.ChatID, line); err != nil {
+        l.log.Error("eventlog send failed", logx.Any("err", err))
+        return err
+    }
+    return nil
+}

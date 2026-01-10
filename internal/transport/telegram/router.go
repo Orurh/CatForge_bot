@@ -264,12 +264,18 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 
 	// Callbacks should be used only in private UI.
 	if cbc.chatType != "private" {
+		r.sendText(ctx, cbc.chatID, "Арена и меню доступны в личке с ботом. Открой бота в личных сообщениях.")
 		return
 	}
 
 	// starter:* handled separately (prefix routing)
 	if strings.HasPrefix(cbc.data, CBStarterPrefix) {
 		r.chooseStarter(ctx, cbc)
+		return
+	}
+
+	if strings.HasPrefix(cbc.data, CBArenaFightPref) {
+		r.doArenaFight(ctx, cbc)
 		return
 	}
 
@@ -294,8 +300,8 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 		r.nameSkip(ctx, cbc)
 	case CBTrainDo:
 		r.doTrainPrivate(ctx, cbc)
-	case CBMenuPVP:
-		r.renderArena(ctx, cbc)
+	case CBMenuPVP, CBArenaRefresh, CBArenaReroll:
+		r.renderArena(ctx, cbc, cbc.data == CBArenaReroll)
 	case CBNoop:
 		return
 	default:
@@ -542,18 +548,44 @@ func (r *Router) doTrainPrivate(ctx context.Context, cbc *cbCtx) {
 	r.renderTrainingTo(ctx, cbc.userID, r.app.Now(), targetFromCB(cbc), head)
 }
 
-func (r *Router) renderArena(ctx context.Context, cbc *cbCtx) {
+func (r *Router) renderArena(ctx context.Context, cbc *cbCtx, reroll bool) {
+
 	cat, err := r.app.Profile.GetCat(ctx, cbc.userID)
 	if err != nil || cat == nil {
-		r.editTextKB(ctx, cbc.chatID, cbc.msgID, "Арена недоступна: сначала выбери кота через /start.", MainMenuKeyboard())
+		r.showScreen(ctx, targetFromCB(cbc), screen{
+			photoURL: r.photoForUser(ctx, cbc.userID),
+			caption:  "Не удалось загрузить арену. Попробуй позже.",
+			kb:       MainMenuKeyboard(),
+		})
 		return
 	}
 
-	p := domain.Power(cat)
-	text := "Арена (скоро)\n" +
-		"Твоя боевая сила: " + strconv.Itoa(p) + "\n\n" +
-		"Скоро здесь будет PvE бой с логом, потом PvP."
-	r.editTextKB(ctx, cbc.chatID, cbc.msgID, text, ArenaKeyboard())
+	salt := "refresh"
+	if reroll {
+		salt = "reroll"
+	}
+	v, err := r.app.Arena.View(ctx, cbc.userID, salt)
+	if err != nil {
+		r.showScreen(ctx, targetFromCB(cbc), screen{
+			photoURL: r.photoForUser(ctx, cbc.userID),
+			caption:  "Не удалось загрузить арену. Попробуй позже.",
+			kb:       MainMenuKeyboard(),
+		})
+		return
+	}
+
+	text := "🏟️ Арена\n\n" +
+		"Сила: " + itoa(v.Power) + "\n" +
+		"Рейтинг: " + itoa(v.State.Rating) + "\n" +
+		"Билеты: " + itoa(v.State.Tickets) + "/" + itoa(domain.ArenaTicketsCap) + "\n" +
+		"Сезонные очки: " + itoa(v.State.SeasonPoints) + "\n\n" +
+		"Выбери цель:"
+
+	r.showScreen(ctx, targetFromCB(cbc), screen{
+		photoURL: views.CatAvatarURL(r.publicBaseURL, cat),
+		caption:  text,
+		kb:       ArenaKeyboard(v.State, v.Opponents),
+	})
 }
 
 // ---- low-level send wrappers ----
@@ -646,7 +678,6 @@ func (r *Router) buildTrainingScreen(cat *domain.Cat, now time.Time, prefix stri
 	}
 }
 
-
 func (r *Router) renderDailyTo(ctx context.Context, userID int64, now time.Time, t uiTarget) {
 	cat, err := r.app.Profile.GetCat(ctx, userID)
 	if err != nil {
@@ -709,4 +740,46 @@ func (r *Router) doDailyClaimTo(ctx context.Context, userID int64, now time.Time
 		caption:  text,
 		kb:       DailyKeyboard(false),
 	})
+}
+
+func (r *Router) doArenaFight(ctx context.Context, cbc *cbCtx) {
+	raw := strings.TrimPrefix(cbc.data, CBArenaFightPref)
+	oppID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || oppID <= 0 {
+		r.sendText(ctx, cbc.chatID, "Некорректная цель.")
+		return
+	}
+
+	st, res, err := r.app.Arena.Fight(ctx, cbc.userID, oppID)
+	if err != nil {
+		// билеты?
+		r.sendText(ctx, cbc.chatID, "Бой недоступен: возможно, закончились билеты. Нажми «Арена» ещё раз.")
+		return
+	}
+
+	line := "⚔️ Бой завершён\n\n" +
+		"Твоя сила: " + itoa(res.AttackerPower) + "\n" +
+		"Сила цели: " + itoa(res.DefenderPower) + "\n" +
+		"Шанс победы: " + itoa(int(res.WinProb*100+0.5)) + "%\n\n"
+
+	if res.AttackerWon {
+		line += "✅ Победа!\n"
+	} else {
+		line += "❌ Поражение.\n"
+	}
+
+	line += "Рейтинг: " + itoa(st.Rating) + " (" + itoa(res.RatingDelta) + ")\n" +
+		"Билеты: " + itoa(st.Tickets) + "/" + itoa(domain.ArenaTicketsCap)
+
+	// после боя перерисуем арену (с новым рейтингом/билетами и новым списком целей)
+    r.showScreen(ctx, targetFromCB(cbc), screen{
+        photoURL: r.photoForUser(ctx, cbc.userID),
+        caption:  line,
+        kb: map[string]any{
+            "inline_keyboard": [][]map[string]any{
+                {{"text": "🏟️ Вернуться на арену", "callback_data": CBArenaRefresh}},
+                {{"text": "⬅️ Меню", "callback_data": CBNavMenu}},
+            },
+        },
+    })
 }

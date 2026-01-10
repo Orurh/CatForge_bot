@@ -20,3 +20,40 @@ type TrainingEvent struct {
 
 	Result domain.TrainResult
 }
+
+
+type DailyClaimEvent struct {
+    ChatID     int64
+    TelegramID int64
+    CatName    string
+    Breed      domain.Breed
+    Now        time.Time
+
+    Streak     int
+    XPGain     int64
+    EnergyGain int
+}
+
+type ArenaFightEvent struct {
+    ChatID     int64
+    TelegramID int64
+    CatName    string
+    Breed      domain.Breed
+    Now        time.Time
+
+    OpponentName string
+    OpponentBreed domain.Breed
+    OpponentLevel int
+    OpponentPower int
+
+    AttackerPower int
+    WinProb       int 
+    Won           bool
+
+    RatingDelta int
+    NewRating   int
+
+    XPGain     int64
+    LeveledUp  int
+    RageAfter  int
+}
