@@ -32,15 +32,18 @@ func (l *TelegramEventLog) Training(ctx context.Context, e app.TrainingEvent) er
 	var line string
 	switch e.Result.Outcome {
 	case domain.TrainingNotEnoughEnergy:
-		line = prefix + "пытался пойти на охоту, но энергии мало (" + itoa(e.Energy) + "/100; нужно 25)."
+		line = prefix + "энергии мало. E: " + itoa(e.Energy) + "/100 (нужно 25)."
+
 	default:
 		story := narrative.HuntStory(e.Result.Encounter, e.Result.Flavor)
 		line = prefix + story + ": +" + itoa64(e.Result.XPGain) + " XP" +
-			" (энергия " + itoa(e.Energy) + "/100, -" + itoa(e.Result.EnergyCost) + "энергии потрачено на охоту)"
+			" • E: " + itoa(e.Energy) + "/100 (-" + itoa(e.Result.EnergyCost) + ")" +
+			" • Форма: " + itoa(e.Result.EffPercent) + "% (" + fmtMul(e.Result.EffPercent) + ")"
+ 
 
 
 		if e.Result.Crit {
-			line += " ✨ КРИТ"
+			line += " ✨КРИТ"
 		}
 		if e.Result.LeveledUp > 0 {
 			line += " → уровень " + itoa(e.Level)

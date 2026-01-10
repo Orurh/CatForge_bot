@@ -529,7 +529,7 @@ func (r *Router) doTrainPrivate(ctx context.Context, cbc *cbCtx) {
 		return
 	}
 
-	head := views.FormatTrainingResultText(cat.Name, res)
+	head := views.FormatTrainingResultText(cat, r.app.Clock.Now(), res)
 	r.renderTrainingTo(ctx, cbc.userID, r.app.Clock.Now(), targetFromCB(cbc), head)
 }
 

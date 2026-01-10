@@ -1,6 +1,7 @@
 package views
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -31,36 +32,58 @@ func FormatTrainingScreen(c *domain.Cat, now time.Time) (text string, canTrain b
 	text = "Охота\n" +
 		"Имя: " + c.Name + "\n" +
 		"Уровень: " + strconv.Itoa(c.Level) + " (XP: " + strconv.FormatInt(c.XP, 10) + "/" + strconv.FormatInt(int64(c.Level)*100, 10) + ")\n" +
-		"Энергия: " + strconv.Itoa(energy) + "/100 (нужно минимум: 25)\n" +
-		"Эффективность: " + strconv.Itoa(effPercent) + "%\n" +
-		"Коэффициент XP: " + strconv.Itoa(effPercent) + "%" + suffix + "\n"
+		"Энергия: " + strconv.Itoa(energy) + "/100 (нужно ≥ 25)\n" +
+		"Форма: " + strconv.Itoa(effPercent) + "% (" + mulFromPercent(effPercent) + ")" + suffix + "\n" +
+		"Форма влияет на XP: частая охота даёт меньше награды (восстановление ~60с).\n"
 
 	return text, canTrain
 }
 
-func FormatTrainingResultText(catName string, res domain.TrainResult) string {
+func mulFromPercent(p int) string {
+	switch {
+	case p <= 0:
+		return "x0.00"
+	case p >= 100:
+		return "x1.00"
+	default:
+		return fmt.Sprintf("x%.2f", float64(p)/100.0)
+	}
+}
+
+func FormatTrainingResultText(cat *domain.Cat, now time.Time, res domain.TrainResult) string {
+	catName := "Кот"
+	energyNow := 0
+	levelNow := 0
+	if cat != nil {
+		if strings.TrimSpace(cat.Name) != "" {
+			catName = cat.Name
+		}
+		energyNow = domain.RegenEnergy(cat.Energy, cat.EnergyUpdatedAt, now)
+		levelNow = cat.Level
+	}
+
 	switch res.Outcome {
 	case domain.TrainingNotEnoughEnergy:
-		if strings.TrimSpace(catName) == "" {
-			catName = "Кот"
-		}
-		return "⚡ " + catName + ": нужно больше энергии для охоты. Минимум: 25."
+		return "⚡ " + catName + ": энергии мало. E: " + strconv.Itoa(energyNow) + "/100 (нужно 25)."
 
 	default:
 		if strings.TrimSpace(catName) == "" {
 			catName = "Кот"
 		}
 		story := narrative.HuntStory(res.Encounter, res.Flavor)
-		msg := "🐾 " + catName + " " + story + ": +" + strconv.FormatInt(res.XPGain, 10) +
-			" XP, -" + strconv.Itoa(res.EnergyCost) + " энергии."
+		msg := "🐾 " + catName + " " + story + ": +" + strconv.FormatInt(res.XPGain, 10) + " XP" +
+			" • E: " + strconv.Itoa(energyNow) + "/100 (-" + strconv.Itoa(res.EnergyCost) + ")" +
+			" • Форма: " + strconv.Itoa(res.EffPercent) + "% (" + mulFromPercent(res.EffPercent) + ")"
+ 		
 		if res.Crit {
-			msg += " ✨ КРИТ! x2 XP"
-		}
-		if res.EffPercent < 100 {
-			msg += " (эффективность: " + strconv.Itoa(res.EffPercent) + "%)"
+			msg += " ✨КРИТ"
 		}
 		if res.LeveledUp > 0 {
-			msg += " 🎉 Уровень повышен!"
+			if levelNow > 0 {
+				msg += " 🎉 Уровень " + strconv.Itoa(levelNow)
+			} else {
+				msg += " 🎉 Уровень повышен!"
+			}
 
 			// показываем прибавку
 			d := res.StatsGained

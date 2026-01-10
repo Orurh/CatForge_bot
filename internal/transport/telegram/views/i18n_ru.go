@@ -5,13 +5,13 @@ import "catforge/internal/domain"
 func BreedRU(b domain.Breed) string {
 	switch b {
 	case domain.BreedMaineCoon:
-		return "мейн-кун"
+		return "Mейн-кун"
 	case domain.BreedSiamese:
-		return "сиам"
+		return "Cиам"
 	case domain.BreedBritish:
-		return "британец"
+		return "Британец"
 	case domain.BreedBengal:
-		return "бенгал"
+		return "Бенгал"
 	default:
 		return string(b)
 	}
