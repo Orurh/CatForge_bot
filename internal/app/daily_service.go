@@ -43,16 +43,9 @@ func (s *DailyService) Claim(ctx context.Context, userID int64) (*domain.Cat, do
 	}
 
     if s.log != nil && res.Outcome == domain.DailyClaimOK {
-        targetChatID := int64(0)
-
-        if s.users != nil {
-            homeID, homeType, err := s.users.GetHomeChat(ctx, userID)
-            if err == nil && homeID != 0 && homeType != "" && homeType != "private" {
-                ok, _ := s.users.TryTouchHomeChatLog(ctx, userID, now, s.homeMinInterval)
-                if ok {
-                    targetChatID = homeID
-                }
-            }
+        targetChatID, err := pickPublicChat(ctx, s.users, userID, now, s.homeMinInterval, 0, "private")
+        if err != nil {
+            targetChatID = 0
         }
 
         if targetChatID != 0 {

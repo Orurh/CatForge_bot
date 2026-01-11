@@ -46,12 +46,12 @@ type DailyRepository interface {
 }
 
 type ArenaRepository interface {
-	GetState(ctx context.Context, userID int64) (domain.ArenaState, error)
+	GetState(ctx context.Context, userID int64, now time.Time) (domain.ArenaState, error)
 	SaveState(ctx context.Context, userID int64, st domain.ArenaState) error
 
 	// 3 цели на выбор
-	FindOpponents(ctx context.Context, userID int64, attackerPower int, seed string) ([]domain.ArenaOpponent, error)
+	FindOpponents(ctx context.Context, userID int64, attackerPower int, scopeChatID int64, scopeChatType string, seed string) ([]domain.ArenaOpponent, error)
 
 	// атомарный бой: списать билет, пересчитать рейтинг, записать матч
-	Fight(ctx context.Context, userID int64, opponentUserID int64, seed string) (domain.ArenaState, domain.ArenaFightResult, error)
+	Fight(ctx context.Context, userID int64, opponentUserID int64, now time.Time, seed string) (domain.ArenaState, domain.ArenaFightResult, int64, int, error)
 }

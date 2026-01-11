@@ -750,7 +750,13 @@ func (r *Router) doArenaFight(ctx context.Context, cbc *cbCtx) {
 		return
 	}
 
-	st, res, err := r.app.Arena.Fight(ctx, cbc.userID, oppID)
+	st, res, err := r.app.Arena.Fight(ctx,
+		cbc.userID,
+		cbc.tgID,
+		cbc.chatID,
+		cbc.chatType,
+		oppID,
+	)
 	if err != nil {
 		// билеты?
 		r.sendText(ctx, cbc.chatID, "Бой недоступен: возможно, закончились билеты. Нажми «Арена» ещё раз.")

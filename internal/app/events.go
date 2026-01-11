@@ -39,6 +39,7 @@ type ArenaFightEvent struct {
     TelegramID int64
     CatName    string
     Breed      domain.Breed
+    Level      int
     Now        time.Time
 
     OpponentName string

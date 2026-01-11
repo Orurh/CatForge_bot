@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 
 	"catforge/internal/app"
 	"catforge/internal/domain"
@@ -72,16 +73,44 @@ func (l *TelegramEventLog) DailyClaim(ctx context.Context, e app.DailyClaimEvent
 }
 
 func (l *TelegramEventLog) ArenaFight(ctx context.Context, e app.ArenaFightEvent) error {
-    badge := publicCatBadge(e.Breed, 1)
+    rel := "⚔️ равный"
+    d := e.AttackerPower - e.OpponentPower
+    switch {
+    case d >= 120:
+        rel = "✅ слабее"
+    case d >= 40:
+        rel = "🙂 чуть слабее"
+    case d <= -120:
+        rel = "💀 сильнее"
+    case d <= -40:
+        rel = "😬 чуть сильнее"
+    }
+    lvl := e.Level
+    if lvl <= 0 {
+        lvl = 1
+    }
+    badge := publicCatBadge(e.Breed, lvl)
     name := e.CatName
     if name == "" { name = "Кот" }
     outcome := "❌ поражение"
     if e.Won { outcome = "✅ победа" }
 
-    line := "🏟️ " + badge + " " + name + ": " + outcome +
+    opp := e.OpponentName
+    if opp == "" {
+        opp = "цель"
+    }
+
+	rd := fmt.Sprintf("%+d", e.RatingDelta)
+
+    line := "🏟️ " + badge + " " + name + " vs " + opp + ": " + outcome +
         " • +" + itoa64(e.XPGain) + " XP" +
-        " • рейтинг " + itoa(e.NewRating) + " (" + itoa(e.RatingDelta) + ")" +
+        " • рейтинг " + itoa(e.NewRating) + " (" + rd + ")" +
+        " • " + rel +
         " • ярость " + itoa(e.RageAfter)
+
+    if e.LeveledUp > 0 && lvl > 1 {
+        line += " → уровень " + itoa(lvl)
+    }
 
     if err := l.s.Text(ctx, e.ChatID, line); err != nil {
         l.log.Error("eventlog send failed", logx.Any("err", err))

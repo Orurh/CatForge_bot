@@ -16,20 +16,20 @@ type ArenaRepo struct{ pool *pgxpool.Pool }
 
 func NewArenaRepo(pool *pgxpool.Pool) *ArenaRepo { return &ArenaRepo{pool: pool} }
 
-func (r *ArenaRepo) GetState(ctx context.Context, userID int64) (domain.ArenaState, error) {
+func (r *ArenaRepo) GetState(ctx context.Context, userID int64, now time.Time) (domain.ArenaState, error) {
 	var st domain.ArenaState
 	err := r.pool.QueryRow(ctx, `
-		SELECT tickets, tickets_updated_at, rating, season_points
+		SELECT tickets, tickets_updated_at, rating, season_points, rage
 		FROM arena_state
 		WHERE user_id = $1
-	`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints)
+	`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints, &st.Rage)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		// лениво 
 		st = domain.ArenaState{
 			Tickets:          domain.ArenaTicketsCap,
-			TicketsUpdatedAt: time.Now().UTC(),
+			TicketsUpdatedAt: now.UTC(),
 			Rating:           domain.ArenaBaseRating,
+			Rage:             0,
 		}
 		_ = r.SaveState(ctx, userID, st)
 		return st, nil
@@ -39,18 +39,19 @@ func (r *ArenaRepo) GetState(ctx context.Context, userID int64) (domain.ArenaSta
 
 func (r *ArenaRepo) SaveState(ctx context.Context, userID int64, st domain.ArenaState) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points)
-		VALUES ($1,$2,$3,$4,$5)
+		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points, rage)
+		VALUES ($1,$2,$3,$4,$5,$6)
 		ON CONFLICT (user_id) DO UPDATE
 		SET tickets = EXCLUDED.tickets,
 		    tickets_updated_at = EXCLUDED.tickets_updated_at,
 		    rating = EXCLUDED.rating,
-		    season_points = EXCLUDED.season_points
-	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints)
+		    season_points = EXCLUDED.season_points,
+		    rage = EXCLUDED.rage
+	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints, st.Rage)
 	return err
 }
 
-func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPower int, seed string) ([]domain.ArenaOpponent, error) {
+func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPower int, scopeChatID int64, scopeChatType string, seed string) ([]domain.ArenaOpponent, error) {
 	// 3 окна: слабее / равный / сильнее
 	type win struct {
 		kind domain.ArenaOpponentKind
@@ -65,7 +66,7 @@ func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPow
 
 	out := make([]domain.ArenaOpponent, 0, 3)
 	for i, w := range windows {
-		op, ok, err := r.findOneOpponent(ctx, userID, w.min, w.max, fmt.Sprintf("%s:%d", seed, i))
+		op, ok, err := r.findOneOpponent(ctx, userID, w.min, w.max, scopeChatID, scopeChatType, fmt.Sprintf("%s:%d", seed, i))
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +78,7 @@ func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPow
 
 	// если совсем пусто (мало игроков), попробуем “широкий” поиск 1-2 целей
 	if len(out) == 0 {
-		op, ok, err := r.findOneOpponent(ctx, userID, attackerPower-99999, attackerPower+99999, seed+":wide")
+		op, ok, err := r.findOneOpponent(ctx, userID, attackerPower-99999, attackerPower+99999, scopeChatID, scopeChatType, seed+":wide")
 		if err != nil {
 			return nil, err
 		}
@@ -89,7 +90,7 @@ func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPow
 	return out, nil
 }
 
-func (r *ArenaRepo) findOneOpponent(ctx context.Context, userID int64, minPower, maxPower int, seed string) (domain.ArenaOpponent, bool, error) {
+func (r *ArenaRepo) findOneOpponent(ctx context.Context, userID int64, minPower, maxPower int, scopeChatID int64, scopeChatType string, seed string) (domain.ArenaOpponent, bool, error) {
 	const q = `
 	WITH candidates AS (
 		SELECT
@@ -99,8 +100,10 @@ func (r *ArenaRepo) findOneOpponent(ctx context.Context, userID int64, minPower,
 			c.level,
 			((c.atk_base * 3) + (c.def_base * 2) + (c.hp_base / 2) + (c.spd_base * 1) + (c.level * 5)) AS power
 		FROM cats c
+		JOIN users u ON u.id = c.user_id
 		WHERE c.user_id <> $1
 		  AND ((c.atk_base * 3) + (c.def_base * 2) + (c.hp_base / 2) + (c.spd_base * 1) + (c.level * 5)) BETWEEN $2 AND $3
+		  AND ($5::bigint = 0 OR (u.home_chat_id = $5 AND u.home_chat_type = $6))
 	)
 	SELECT user_id, name, breed, level, power
 	FROM candidates
@@ -109,7 +112,7 @@ func (r *ArenaRepo) findOneOpponent(ctx context.Context, userID int64, minPower,
 	`
 	var op domain.ArenaOpponent
 	var breed string
-	err := r.pool.QueryRow(ctx, q, userID, minPower, maxPower, seed).Scan(
+	err := r.pool.QueryRow(ctx, q, userID, minPower, maxPower, seed, scopeChatID, scopeChatType).Scan(
 		&op.UserID, &op.Name, &breed, &op.Level, &op.Power,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -122,32 +125,33 @@ func (r *ArenaRepo) findOneOpponent(ctx context.Context, userID int64, minPower,
 	return op, true, nil
 }
 
-func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int64, seed string) (domain.ArenaState, domain.ArenaFightResult, error) {
+func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int64, now time.Time, seed string) (domain.ArenaState, domain.ArenaFightResult, int64, int, error) {
+
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1) state + regen + consume ticket
-	st, err := r.getStateTx(ctx, tx, userID)
+	st, err := r.getStateTx(ctx, tx, userID, now)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
 	}
-	st = domain.RegenArenaTickets(st, time.Now().UTC())
+	st = domain.RegenArenaTickets(st, now)
 	if st.Tickets <= 0 {
-		return st, domain.ArenaFightResult{}, errors.New("arena: no tickets")
+		return st, domain.ArenaFightResult{}, 0, 0, errors.New("arena: no tickets")
 	}
 	st.Tickets--
 
 	// 2) load powers (SQL = domain.Power)
 	ap, err := catPowerTx(ctx, tx, userID)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
 	}
 	dp, err := catPowerTx(ctx, tx, opponentUserID)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
 	}
 
 	res := domain.ArenaResolveWithRage(seed, ap, dp, st.Rage)
@@ -162,52 +166,55 @@ func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int6
 	} else {
 		st.SeasonPoints += 3
 		st.Rage++
-		if st.Rage > domain.ArenaRageCap{
+		if st.Rage > domain.ArenaRageCap {
 			st.Rage = domain.ArenaRageCap
 		}
 	}
 
-    // 2.5) reward XP to attacker (more for win)
-    xpGain := int64(12)
-    if res.AttackerWon {
-        xpGain = 28
-    }
+	// 2.5) reward XP to attacker (more for win)
+	xpGain := int64(12)
+	if res.AttackerWon {
+		xpGain = 28
+	}
 
-    // Load attacker cat (FOR UPDATE) to apply XP + possible levelups.
-    var c domain.Cat
-    err = scanCatFull(tx.QueryRow(ctx, `
+	// Load attacker cat (FOR UPDATE) to apply XP + possible levelups.
+	var c domain.Cat
+	err = scanCatFull(tx.QueryRow(ctx, `
         SELECT id, user_id, name, breed, trait, level, xp, energy, last_train_at, energy_updated_at,
                hp_base, atk_base, def_base, spd_base
         FROM cats WHERE user_id=$1
         FOR UPDATE
     `, userID), &c)
-    if err != nil { return domain.ArenaState{}, domain.ArenaFightResult{}, err }
+	if err != nil {
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+	}
 
-    c.XP += xpGain
-    leveled := 0
-    var gained domain.StatDelta
-    for c.XP >= int64(c.Level)*100 {
-        c.XP -= int64(c.Level) * 100
-        c.Level++
-        leveled++
-        d := domain.ApplyLevelUps(&c, 1)
-        gained.Add(d)
-    }
+	c.XP += xpGain
+	leveled := 0
+	var gained domain.StatDelta
+	for c.XP >= int64(c.Level)*100 {
+		c.XP -= int64(c.Level) * 100
+		c.Level++
+		leveled++
+		d := domain.ApplyLevelUps(&c, 1)
+		gained.Add(d)
+	}
 
-    // persist cat xp/level/stats
-    _, err = tx.Exec(ctx, `
+	// persist cat xp/level/stats
+	_, err = tx.Exec(ctx, `
         UPDATE cats
         SET level=$2, xp=$3,
             hp_base=$4, atk_base=$5, def_base=$6, spd_base=$7,
             updated_at=now()
         WHERE user_id=$1
     `, userID, c.Level, c.XP, c.HPBase, c.ATKBase, c.DEFBase, c.SPDBase)
-    if err != nil { return domain.ArenaState{}, domain.ArenaFightResult{}, err }
-
+	if err != nil {
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+	}
 
 	// 3) persist state
 	if err := r.saveStateTx(ctx, tx, userID, st); err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
 	}
 
 	// 4) match log
@@ -216,28 +223,29 @@ func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int6
 		VALUES ($1,$2,$3,$4,$5,$6,$7)
 	`, userID, opponentUserID, seed, ap, dp, res.AttackerWon, res.RatingDelta)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
 	}
-	return st, res, nil
+	return st, res, xpGain, leveled, nil
 }
 
-func (r *ArenaRepo) getStateTx(ctx context.Context, tx pgx.Tx, userID int64) (domain.ArenaState, error) {
+func (r *ArenaRepo) getStateTx(ctx context.Context, tx pgx.Tx, userID int64, now time.Time) (domain.ArenaState, error) {
 	var st domain.ArenaState
 	err := tx.QueryRow(ctx, `
-		SELECT tickets, tickets_updated_at, rating, season_points
+		SELECT tickets, tickets_updated_at, rating, season_points, rage
 		FROM arena_state WHERE user_id = $1
 		FOR UPDATE
-	`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints)
+		`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints, &st.Rage)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		st = domain.ArenaState{
 			Tickets:          domain.ArenaTicketsCap,
-			TicketsUpdatedAt: time.Now().UTC(),
+			TicketsUpdatedAt: now.UTC(),
 			Rating:           domain.ArenaBaseRating,
+			Rage:             0,
 		}
 		if err := r.saveStateTx(ctx, tx, userID, st); err != nil {
 			return domain.ArenaState{}, err
@@ -249,14 +257,15 @@ func (r *ArenaRepo) getStateTx(ctx context.Context, tx pgx.Tx, userID int64) (do
 
 func (r *ArenaRepo) saveStateTx(ctx context.Context, tx pgx.Tx, userID int64, st domain.ArenaState) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points)
-		VALUES ($1,$2,$3,$4,$5)
+		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points, rage)
+		VALUES ($1,$2,$3,$4,$5,$6)
 		ON CONFLICT (user_id) DO UPDATE
 		SET tickets = EXCLUDED.tickets,
 		    tickets_updated_at = EXCLUDED.tickets_updated_at,
 		    rating = EXCLUDED.rating,
-		    season_points = EXCLUDED.season_points
-	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints)
+		    season_points = EXCLUDED.season_points,
+		    rage = EXCLUDED.rage
+	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints, st.Rage)
 	return err
 }
 

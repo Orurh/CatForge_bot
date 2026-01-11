@@ -76,16 +76,14 @@ func (r *UserRepo) SetHomeChat(ctx context.Context, userID int64, chatID int64, 
 
 func (r *UserRepo) TryTouchHomeChatLog(ctx context.Context, userID int64, now time.Time, minInterval time.Duration) (bool, error) {
 	threshold := now.Add(-minInterval)
-	var ok int
-	err := r.pool.QueryRow(ctx, `
+	ct, err := r.pool.Exec(ctx, `
 		UPDATE users
 		SET home_chat_last_log_at = $2
 		WHERE id = $1
-		  AND (home_chat_last_log_at IS NULL OR home_chat_last_log_at <= $3)
-		RETURNING 1
-	`, userID, now, threshold).Scan(&ok)
+		AND (home_chat_last_log_at IS NULL OR home_chat_last_log_at <= $3)
+	`, userID, now, threshold)
 	if err != nil {
-		return false, nil
+		return false, err
 	}
-	return true, nil
+	return ct.RowsAffected() == 1, nil
 }
