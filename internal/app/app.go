@@ -33,7 +33,7 @@ func New(users UserRepository, cats CatRepository, daily DailyRepository, arena 
 		eventLog: ev,
 	}
 	a.Starter = NewStarterService(cats, rng)
-	a.Profile = NewProfileService(cats)
+	a.Profile = NewProfileService(cats, arena, clock)
 	a.Training = NewTrainingService(cats, users, clock, ev)
 	a.Daily = NewDailyService(daily, users, cats, clock, ev)
 	a.Arena = NewArenaService(arena, cats, users, clock, ev)

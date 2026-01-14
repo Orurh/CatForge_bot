@@ -35,6 +35,9 @@ func (r *ArenaRepo) GetState(ctx context.Context, userID int64, now time.Time) (
 			TicketsUpdatedAt: now.UTC(),
 			Rating:           domain.ArenaBaseRating,
 			Rage:             0,
+			RerollDay:        domain.ArenaDay(now),
+			RerollsToday:     0,
+			RerollReadyAt:    time.Unix(0, 0).UTC(),
 		}
 		_ = r.SaveState(ctx, userID, st)
 		return st, nil
@@ -59,8 +62,42 @@ func (r *ArenaRepo) SaveState(ctx context.Context, userID int64, st domain.Arena
  	return err
 }
 
+func (r *ArenaRepo) ResetState(ctx context.Context, userID int64, now time.Time) error {
+	st := domain.ArenaState{
+		Tickets:          domain.ArenaTicketsCap,
+		TicketsUpdatedAt: now.UTC(),
+		Rating:           domain.ArenaBaseRating,
+		SeasonPoints:     0,
+		Rage:             0,
+		RerollDay:        domain.ArenaDay(now),
+		RerollsToday:     0,
+		RerollReadyAt:    time.Unix(0, 0).UTC(),
+	}
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points, rage, reroll_day, rerolls_today, reroll_ready_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		ON CONFLICT (user_id) DO UPDATE
+		SET tickets = EXCLUDED.tickets,
+		    tickets_updated_at = EXCLUDED.tickets_updated_at,
+		    rating = EXCLUDED.rating,
+		    season_points = EXCLUDED.season_points,
+		    rage = EXCLUDED.rage,
+		    reroll_day = EXCLUDED.reroll_day,
+		    rerolls_today = EXCLUDED.rerolls_today,
+		    reroll_ready_at = EXCLUDED.reroll_ready_at
+	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints, st.Rage, st.RerollDay, st.RerollsToday, st.RerollReadyAt)
+	return err
+}
+
 func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPower int, scopeChatID int64, scopeChatType string, seed string) ([]domain.ArenaOpponent, error) {
-	// 3 окна: слабее / равный / сильнее
+	seen := make(map[int64]struct{}, 4)
+	add := func(op domain.ArenaOpponent) bool {
+		if _, ok := seen[op.UserID]; ok {
+			return false
+		}
+		seen[op.UserID] = struct{}{}
+		return true
+	}
 	type win struct {
 		kind domain.ArenaOpponentKind
 		min  int
@@ -72,46 +109,58 @@ func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPow
 		{kind: domain.ArenaOppStronger, min: attackerPower + 60, max: attackerPower + 260},
 	}
 
-	
-
 	out := make([]domain.ArenaOpponent, 0, 3)
+
+	// 1) scoped windows
 	for i, w := range windows {
 		op, ok, err := r.findOneOpponent(ctx, userID, w.min, w.max, scopeChatID, scopeChatType, fmt.Sprintf("%s:%d", seed, i))
 		if err != nil {
 			return nil, err
 		}
-		if ok {
+		if ok && add(op) {
 			op.Kind = w.kind
 			out = append(out, op)
 		}
 	}
 
-	// если совсем пусто (мало игроков), попробуем “широкий” поиск 1-2 целей
+	// 2) wide (scoped, then global fallback)
 	if len(out) == 0 {
 		op, ok, err := r.findOneOpponent(ctx, userID, attackerPower-99999, attackerPower+99999, scopeChatID, scopeChatType, seed+":wide")
 		if err != nil {
 			return nil, err
 		}
 		if !ok && scopeChatID != 0 {
+			op, ok, err = r.findOneOpponent(ctx, userID, attackerPower-99999, attackerPower+99999, 0, "", seed+":wide:global")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if ok && add(op) {
 			op.Kind = domain.ArenaOppEven
 			out = append(out, op)
 		}
 	}
 
-	if scopeChatID != 0 && len(out) == 0 {
+	// 3) fallback to global if we have too few targets in scoped pool
+	if scopeChatID != 0 && len(out) < 3 {
 		for i, w := range windows {
 			op, ok, err := r.findOneOpponent(ctx, userID, w.min, w.max, 0, "", fmt.Sprintf("%s:global:%d", seed, i))
 			if err != nil {
 				return nil, err
 			}
-			if ok {
+			if ok && add(op) {
 				op.Kind = w.kind
 				out = append(out, op)
+				if len(out) >= 3 {
+					break
+				}
 			}
 		}
 	}
+
 	return out, nil
 }
+
 
 func (r *ArenaRepo) findOneOpponent(ctx context.Context, userID int64, minPower, maxPower int, scopeChatID int64, scopeChatType string, seed string) (domain.ArenaOpponent, bool, error) {
 	const q = `
@@ -303,6 +352,9 @@ func (r *ArenaRepo) getStateTx(ctx context.Context, tx pgx.Tx, userID int64, now
 			TicketsUpdatedAt: now.UTC(),
 			Rating:           domain.ArenaBaseRating,
 			Rage:             0,
+			RerollDay:        domain.ArenaDay(now),
+			RerollsToday:     0,
+			RerollReadyAt:    time.Unix(0, 0).UTC(),
 		}
 		if err := r.saveStateTx(ctx, tx, userID, st); err != nil {
 			return domain.ArenaState{}, err
