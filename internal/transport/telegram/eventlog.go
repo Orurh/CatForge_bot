@@ -101,12 +101,24 @@ func (l *TelegramEventLog) ArenaFight(ctx context.Context, e app.ArenaFightEvent
     }
 
 	rd := fmt.Sprintf("%+d", e.RatingDelta)
+    riskMul := "x1.00"
+    if e.RiskMulPct > 0 {
+        riskMul = fmt.Sprintf("x%.2f", float64(e.RiskMulPct)/100.0)
+    }
+    sp := ""
+    if e.SeasonDelta != 0 {
+        sp = " • сезон +" + itoa(e.SeasonDelta)
+    }
+
 
     line := "🏟️ " + badge + " " + name + " vs " + opp + ": " + outcome +
         " • +" + itoa64(e.XPGain) + " XP" +
         " • рейтинг " + itoa(e.NewRating) + " (" + rd + ")" +
         " • " + rel +
+        " • риск " + riskMul +
+        sp +
         " • ярость " + itoa(e.RageAfter)
+        
 
     if e.LeveledUp > 0 && lvl > 1 {
         line += " → уровень " + itoa(lvl)

@@ -56,5 +56,8 @@ type ArenaFightEvent struct {
 
     XPGain     int64
     LeveledUp  int
+    RageBefore int
     RageAfter  int
+    RiskMulPct int
+    SeasonDelta int
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -300,7 +301,11 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 		r.nameSkip(ctx, cbc)
 	case CBTrainDo:
 		r.doTrainPrivate(ctx, cbc)
-	case CBMenuPVP, CBArenaRefresh, CBArenaReroll:
+	case CBArenaRerollPay:
+		r.doArenaReroll(ctx, cbc, true)
+	case CBArenaReroll:
+		r.doArenaReroll(ctx, cbc, false)
+	case CBMenuPVP, CBArenaRefresh:
 		r.renderArena(ctx, cbc, cbc.data == CBArenaReroll)
 	case CBNoop:
 		return
@@ -335,6 +340,16 @@ func (r *Router) doTrainPublic(ctx context.Context, tgc *tgCtx) {
 	}
 	r.sendText(ctx, tgc.chatID, "Не удалось поохотиться. Попробуй позже.")
 }
+
+func (r *Router) doArenaReroll(ctx context.Context, cbc *cbCtx, pay bool) {
+	_, _, err := r.app.Arena.Reroll(ctx, cbc.userID, pay)
+	if err != nil {
+		r.renderArena(ctx, cbc, false)
+		return
+	}
+	r.renderArena(ctx, cbc, true)
+}
+
 
 func (r *Router) renderPrivateStart(ctx context.Context, tgc *tgCtx) {
 	s := r.buildHomeOrStarterScreen(ctx, tgc.userID)
@@ -579,13 +594,15 @@ func (r *Router) renderArena(ctx context.Context, cbc *cbCtx, reroll bool) {
 		"Рейтинг: " + itoa(v.State.Rating) + "\n" +
 		"Билеты: " + itoa(v.State.Tickets) + "/" + itoa(domain.ArenaTicketsCap) + "\n" +
 		"Сезонные очки: " + itoa(v.State.SeasonPoints) + "\n\n" +
-		"Выбери цель:"
+        "Ярость: " + itoa(v.State.Rage) + "/" + itoa(domain.ArenaRageCap) +
+        " (+" + itoa(v.State.Rage*4) + "% к шансу)\n\n" +
+ 		"Выбери цель:"
 
 	r.showScreen(ctx, targetFromCB(cbc), screen{
 		photoURL: views.CatAvatarURL(r.publicBaseURL, cat),
 		caption:  text,
-		kb:       ArenaKeyboard(v.State, v.Opponents),
-	})
+		kb:       ArenaKeyboard(v.State, v.Opponents, v.CanFreeReroll, v.RerollWait, v.CanPayReroll, v.RerollCostE),
+ 	})
 }
 
 // ---- low-level send wrappers ----
@@ -750,7 +767,7 @@ func (r *Router) doArenaFight(ctx context.Context, cbc *cbCtx) {
 		return
 	}
 
-	st, res, err := r.app.Arena.Fight(ctx,
+	st, res, meta, err := r.app.Arena.Fight(ctx,
 		cbc.userID,
 		cbc.tgID,
 		cbc.chatID,
@@ -763,6 +780,10 @@ func (r *Router) doArenaFight(ctx context.Context, cbc *cbCtx) {
 		return
 	}
 
+    riskMul := "x1.00"
+    if meta.RiskMulPct > 0 {
+        riskMul = fmt.Sprintf("x%.2f", float64(meta.RiskMulPct)/100.0)
+    }
 	line := "⚔️ Бой завершён\n\n" +
 		"Твоя сила: " + itoa(res.AttackerPower) + "\n" +
 		"Сила цели: " + itoa(res.DefenderPower) + "\n" +
@@ -774,7 +795,10 @@ func (r *Router) doArenaFight(ctx context.Context, cbc *cbCtx) {
 		line += "❌ Поражение.\n"
 	}
 
-	line += "Рейтинг: " + itoa(st.Rating) + " (" + itoa(res.RatingDelta) + ")\n" +
+	line += "\nНаграда: +" + itoa64(meta.XPGain) + " XP (риск " + riskMul + ")" +
+        " • сезон +" + itoa(meta.SeasonDelta) + "\n" +
+        "Ярость: " + itoa(meta.RageBefore) + " → " + itoa(meta.RageAfter) + "\n\n" +
+        "Рейтинг: " + itoa(st.Rating) + " (" + itoa(res.RatingDelta) + ")\n" +
 		"Билеты: " + itoa(st.Tickets) + "/" + itoa(domain.ArenaTicketsCap)
 
 	// после боя перерисуем арену (с новым рейтингом/билетами и новым списком целей)

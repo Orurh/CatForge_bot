@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,7 +21,37 @@ type ArenaService struct {
 type ArenaView struct {
 	State     domain.ArenaState
 	Power     int
-	Opponents []domain.ArenaOpponent
+	Opponents []ArenaOpponentView
+
+	CanFreeReroll bool
+	RerollWait    time.Duration
+	CanPayReroll  bool
+	RerollCostE   int
+	EnergyNow     int
+}
+
+type ArenaOpponentView struct {
+	UserID     int64
+	Name       string
+	Breed      domain.Breed
+	Level      int
+	Power      int
+	Kind       domain.ArenaOpponentKind
+	WinProbPct int
+}
+
+var (
+	ErrArenaRerollCooldown  = errors.New("arena: reroll cooldown")
+	ErrArenaNotEnoughEnergy = errors.New("arena: not enough energy")
+)
+
+type ArenaFightMeta struct {
+	XPGain      int64
+	LeveledUp   int
+	RiskMulPct  int
+	SeasonDelta int
+	RageBefore  int
+	RageAfter   int
 }
 
 func NewArenaService(repo ArenaRepository, cats CatRepository, users UserRepository, clock Clock, log EventLog) *ArenaService {
@@ -34,46 +65,17 @@ func NewArenaService(repo ArenaRepository, cats CatRepository, users UserReposit
 	}
 }
 
-func (s *ArenaService) View(ctx context.Context, userID int64, salt string) (ArenaView, error) {
+
+func (s *ArenaService) Reroll(ctx context.Context, userID int64, pay bool) (domain.ArenaState, int, error) {
 	now := s.clock.Now()
-
-	cat, err := s.cats.GetByUserID(ctx, userID)
-	if err != nil {
-		return ArenaView{}, err
+	cost := 0
+	if pay {
+		cost = domain.ArenaRerollEnergyCost
 	}
-	power := domain.Power(cat)
-
-	st, err := s.repo.GetState(ctx, userID, now)
-	if err != nil {
-		return ArenaView{}, err
-	}
-	st = domain.RegenArenaTickets(st, now)
-	if err := s.repo.SaveState(ctx, userID, st); err != nil {
-		return ArenaView{}, err
-	}
-
-	if salt == "" {
-		salt = "view"
-	}
-	seed := arenaSeed(now, userID, "view:"+salt)
-	var scopeChatID int64
-	var scopeChatType string
-	if s.users != nil {
-		homeID, homeType, err := s.users.GetHomeChat(ctx, userID)
-		if err == nil && homeID != 0 && homeType != "" && homeType != "private" {
-			scopeChatID = homeID
-			scopeChatType = homeType
-		}
-	}
-
-	ops, err := s.repo.FindOpponents(ctx, userID, power, scopeChatID, scopeChatType, seed)
- 
-	if err != nil {
-		return ArenaView{}, err
-	}
-
-	return ArenaView{State: st, Power: power, Opponents: ops}, nil
+	st, energyNow, err := s.repo.Reroll(ctx, userID, now, pay, cost)
+	return st, energyNow, err
 }
+
 
 func (s *ArenaService) Fight(
 	ctx context.Context,
@@ -82,12 +84,13 @@ func (s *ArenaService) Fight(
 	sourceChatID int64,
 	sourceChatType string,
 	opponentUserID int64,
-) (domain.ArenaState, domain.ArenaFightResult, error) {
+) (domain.ArenaState, domain.ArenaFightResult, ArenaFightMeta, error) {
 	now := s.clock.Now()
 	seed := arenaSeed(now, userID, fmt.Sprintf("fight:%d", opponentUserID))
-	st, res, xpGain, leveledUp, err := s.repo.Fight(ctx, userID, opponentUserID, now, seed)
+	st, res, xpGain, leveledUp, riskMulPct, seasonDelta, rageBefore, rageAfter, err :=
+		s.repo.Fight(ctx, userID, opponentUserID, now, seed)
 	if err != nil {
-		return st, res, err
+		return st, res, ArenaFightMeta{}, err
 	}
 
 	if s.log != nil {
@@ -97,7 +100,7 @@ func (s *ArenaService) Fight(
 		}
 
 		if targetChatID != 0 {
-			attCat, _ := s.cats.GetByUserID(ctx, userID)       
+			attCat, _ := s.cats.GetByUserID(ctx, userID)
 			defCat, _ := s.cats.GetByUserID(ctx, opponentUserID)
 
 			attName := ""
@@ -138,12 +141,23 @@ func (s *ArenaService) Fight(
 				NewRating:     st.Rating,
 				XPGain:        xpGain,
 				LeveledUp:     leveledUp,
-				RageAfter:     st.Rage,
+				RageBefore:    rageBefore,
+				RageAfter:     rageAfter,
+				RiskMulPct:    riskMulPct,
+				SeasonDelta:   seasonDelta,
 			})
 		}
 	}
 
-	return st, res, nil
+	return st, res, ArenaFightMeta{
+		XPGain:      xpGain,
+		LeveledUp:   leveledUp,
+		RiskMulPct:  riskMulPct,
+		SeasonDelta: seasonDelta,
+		RageBefore:  rageBefore,
+		RageAfter:   rageAfter,
+	}, nil
+
 }
 
 func arenaSeed(now time.Time, userID int64, salt string) string {

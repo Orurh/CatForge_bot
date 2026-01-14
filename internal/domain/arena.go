@@ -21,6 +21,10 @@ type ArenaState struct {
 	Rating           int
 	SeasonPoints     int
 	Rage             int
+
+	RerollDay     time.Time // date (UTC midnight)
+	RerollsToday  int
+	RerollReadyAt time.Time
 }
 
 type ArenaOpponent struct {
@@ -86,6 +90,35 @@ const (
     ArenaRageCap = 5
     ArenaRageBonusPerStack = 0.04 
 )
+
+
+const (
+	ArenaRerollEnergyCost   = 10
+	ArenaRerollCooldownBase = 5 * time.Minute
+	ArenaRerollCooldownCap  = 30 * time.Minute
+)
+
+func ArenaDay(now time.Time) time.Time {
+	y, m, d := now.UTC().Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+func ArenaRerollCooldown(rerollsToday int) time.Duration {
+	cd := ArenaRerollCooldownBase
+	switch {
+	case rerollsToday >= 7:
+		cd = 20 * time.Minute
+	case rerollsToday >= 4:
+		cd = 10 * time.Minute
+	default:
+		cd = ArenaRerollCooldownBase
+	}
+	if cd > ArenaRerollCooldownCap {
+		cd = ArenaRerollCooldownCap
+	}
+	return cd
+}
+
 
 
 

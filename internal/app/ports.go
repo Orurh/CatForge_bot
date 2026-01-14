@@ -53,5 +53,7 @@ type ArenaRepository interface {
 	FindOpponents(ctx context.Context, userID int64, attackerPower int, scopeChatID int64, scopeChatType string, seed string) ([]domain.ArenaOpponent, error)
 
 	// атомарный бой: списать билет, пересчитать рейтинг, записать матч
-	Fight(ctx context.Context, userID int64, opponentUserID int64, now time.Time, seed string) (domain.ArenaState, domain.ArenaFightResult, int64, int, error)
+	Fight(ctx context.Context, userID int64, opponentUserID int64, now time.Time, seed string) (domain.ArenaState, domain.ArenaFightResult, int64, int, int, int, int, int, error)
+	Reroll(ctx context.Context, userID int64, now time.Time, pay bool, energyCost int) (domain.ArenaState, int, error)
+
 }

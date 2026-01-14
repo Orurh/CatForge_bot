@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,10 +20,14 @@ func NewArenaRepo(pool *pgxpool.Pool) *ArenaRepo { return &ArenaRepo{pool: pool}
 func (r *ArenaRepo) GetState(ctx context.Context, userID int64, now time.Time) (domain.ArenaState, error) {
 	var st domain.ArenaState
 	err := r.pool.QueryRow(ctx, `
-		SELECT tickets, tickets_updated_at, rating, season_points, rage
+	SELECT tickets, tickets_updated_at, rating, season_points, rage,
+       COALESCE(reroll_day, CURRENT_DATE)                AS reroll_day,
+       COALESCE(rerolls_today, 0)                        AS rerolls_today,
+       COALESCE(reroll_ready_at, 'epoch'::timestamptz)   AS reroll_ready_at
 		FROM arena_state
 		WHERE user_id = $1
-	`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints, &st.Rage)
+	`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints, &st.Rage,
+		&st.RerollDay, &st.RerollsToday, &st.RerollReadyAt)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		st = domain.ArenaState{
@@ -39,16 +44,19 @@ func (r *ArenaRepo) GetState(ctx context.Context, userID int64, now time.Time) (
 
 func (r *ArenaRepo) SaveState(ctx context.Context, userID int64, st domain.ArenaState) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points, rage)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points, rage, reroll_day, rerolls_today, reroll_ready_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (user_id) DO UPDATE
 		SET tickets = EXCLUDED.tickets,
 		    tickets_updated_at = EXCLUDED.tickets_updated_at,
 		    rating = EXCLUDED.rating,
 		    season_points = EXCLUDED.season_points,
-		    rage = EXCLUDED.rage
-	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints, st.Rage)
-	return err
+		    rage = EXCLUDED.rage,
+		    reroll_day = EXCLUDED.reroll_day,
+		    rerolls_today = EXCLUDED.rerolls_today,
+		    reroll_ready_at = EXCLUDED.reroll_ready_at
+	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints, st.Rage, st.RerollDay, st.RerollsToday, st.RerollReadyAt)
+ 	return err
 }
 
 func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPower int, scopeChatID int64, scopeChatType string, seed string) ([]domain.ArenaOpponent, error) {
@@ -63,6 +71,8 @@ func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPow
 		{kind: domain.ArenaOppEven, min: attackerPower - 80, max: attackerPower + 80},
 		{kind: domain.ArenaOppStronger, min: attackerPower + 60, max: attackerPower + 260},
 	}
+
+	
 
 	out := make([]domain.ArenaOpponent, 0, 3)
 	for i, w := range windows {
@@ -82,9 +92,22 @@ func (r *ArenaRepo) FindOpponents(ctx context.Context, userID int64, attackerPow
 		if err != nil {
 			return nil, err
 		}
-		if ok {
+		if !ok && scopeChatID != 0 {
 			op.Kind = domain.ArenaOppEven
 			out = append(out, op)
+		}
+	}
+
+	if scopeChatID != 0 && len(out) == 0 {
+		for i, w := range windows {
+			op, ok, err := r.findOneOpponent(ctx, userID, w.min, w.max, 0, "", fmt.Sprintf("%s:global:%d", seed, i))
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				op.Kind = w.kind
+				out = append(out, op)
+			}
 		}
 	}
 	return out, nil
@@ -125,33 +148,35 @@ func (r *ArenaRepo) findOneOpponent(ctx context.Context, userID int64, minPower,
 	return op, true, nil
 }
 
-func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int64, now time.Time, seed string) (domain.ArenaState, domain.ArenaFightResult, int64, int, error) {
+func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int64, now time.Time, seed string) (domain.ArenaState, domain.ArenaFightResult, int64, int, int, int, int, int, error) {
 
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1) state + regen + consume ticket
 	st, err := r.getStateTx(ctx, tx, userID, now)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 	st = domain.RegenArenaTickets(st, now)
 	if st.Tickets <= 0 {
-		return st, domain.ArenaFightResult{}, 0, 0, errors.New("arena: no tickets")
+		return st, domain.ArenaFightResult{}, 0, 0, 0, 0, st.Rage, st.Rage, errors.New("arena: no tickets")
+
 	}
 	st.Tickets--
+	rageBefore := st.Rage
 
 	// 2) load powers (SQL = domain.Power)
 	ap, err := catPowerTx(ctx, tx, userID)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 	dp, err := catPowerTx(ctx, tx, opponentUserID)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 
 	res := domain.ArenaResolveWithRage(seed, ap, dp, st.Rage)
@@ -160,21 +185,48 @@ func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int6
 		res.NewRating = 0
 	}
 	st.Rating = res.NewRating
+	diff := ap - dp
+	riskMulPct := 100
+	switch {
+	case diff <= -80:
+		riskMulPct = 130
+	case diff >= 80:
+		riskMulPct = 80
+	default:
+		riskMulPct = 100
+	}
+
+	// season points (scaled by risk)
+	seasonBase := 3
 	if res.AttackerWon {
-		st.SeasonPoints += 10
+		seasonBase = 10
+	}
+	seasonDelta := int(math.Round(float64(seasonBase) * float64(riskMulPct) / 100.0))
+	if seasonDelta < 0 {
+		seasonDelta = 0
+	}
+	st.SeasonPoints += seasonDelta
+
+	// rage update
+	if res.AttackerWon {
 		st.Rage = 0
 	} else {
-		st.SeasonPoints += 3
 		st.Rage++
 		if st.Rage > domain.ArenaRageCap {
 			st.Rage = domain.ArenaRageCap
 		}
 	}
+	rageAfter := st.Rage
 
 	// 2.5) reward XP to attacker (more for win)
 	xpGain := int64(12)
 	if res.AttackerWon {
 		xpGain = 28
+	}
+
+	xpGain = int64(math.Round(float64(xpGain) * float64(riskMulPct) / 100.0))
+	if xpGain < 1 {
+		xpGain = 1
 	}
 
 	// Load attacker cat (FOR UPDATE) to apply XP + possible levelups.
@@ -186,7 +238,7 @@ func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int6
         FOR UPDATE
     `, userID), &c)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 
 	c.XP += xpGain
@@ -209,12 +261,12 @@ func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int6
         WHERE user_id=$1
     `, userID, c.Level, c.XP, c.HPBase, c.ATKBase, c.DEFBase, c.SPDBase)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 
 	// 3) persist state
 	if err := r.saveStateTx(ctx, tx, userID, st); err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 
 	// 4) match log
@@ -223,22 +275,27 @@ func (r *ArenaRepo) Fight(ctx context.Context, userID int64, opponentUserID int6
 		VALUES ($1,$2,$3,$4,$5,$6,$7)
 	`, userID, opponentUserID, seed, ap, dp, res.AttackerWon, res.RatingDelta)
 	if err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, err
+		return domain.ArenaState{}, domain.ArenaFightResult{}, 0, 0, 0, 0, 0, 0, err
 	}
-	return st, res, xpGain, leveled, nil
+	return st, res, xpGain, leveled, riskMulPct, seasonDelta, rageBefore, rageAfter, nil
+
 }
 
 func (r *ArenaRepo) getStateTx(ctx context.Context, tx pgx.Tx, userID int64, now time.Time) (domain.ArenaState, error) {
 	var st domain.ArenaState
 	err := tx.QueryRow(ctx, `
-		SELECT tickets, tickets_updated_at, rating, season_points, rage
+	SELECT tickets, tickets_updated_at, rating, season_points, rage,
+       COALESCE(reroll_day, CURRENT_DATE)                AS reroll_day,
+       COALESCE(rerolls_today, 0)                        AS rerolls_today,
+       COALESCE(reroll_ready_at, 'epoch'::timestamptz)   AS reroll_ready_at
 		FROM arena_state WHERE user_id = $1
 		FOR UPDATE
-		`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints, &st.Rage)
+		`, userID).Scan(&st.Tickets, &st.TicketsUpdatedAt, &st.Rating, &st.SeasonPoints, &st.Rage,
+		&st.RerollDay, &st.RerollsToday, &st.RerollReadyAt)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		st = domain.ArenaState{
@@ -257,17 +314,86 @@ func (r *ArenaRepo) getStateTx(ctx context.Context, tx pgx.Tx, userID int64, now
 
 func (r *ArenaRepo) saveStateTx(ctx context.Context, tx pgx.Tx, userID int64, st domain.ArenaState) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points, rage)
-		VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO arena_state (user_id, tickets, tickets_updated_at, rating, season_points, rage, reroll_day, rerolls_today, reroll_ready_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (user_id) DO UPDATE
 		SET tickets = EXCLUDED.tickets,
 		    tickets_updated_at = EXCLUDED.tickets_updated_at,
 		    rating = EXCLUDED.rating,
 		    season_points = EXCLUDED.season_points,
-		    rage = EXCLUDED.rage
-	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints, st.Rage)
-	return err
+		    rage = EXCLUDED.rage,
+		    reroll_day = EXCLUDED.reroll_day,
+		    rerolls_today = EXCLUDED.rerolls_today,
+		    reroll_ready_at = EXCLUDED.reroll_ready_at
+	`, userID, st.Tickets, st.TicketsUpdatedAt, st.Rating, st.SeasonPoints, st.Rage, st.RerollDay, st.RerollsToday, st.RerollReadyAt)
+ 	return err
 }
+
+func (r *ArenaRepo) Reroll(ctx context.Context, userID int64, now time.Time, pay bool, energyCost int) (domain.ArenaState, int, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return domain.ArenaState{}, 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	st, err := r.getStateTx(ctx, tx, userID, now)
+	if err != nil {
+		return domain.ArenaState{}, 0, err
+	}
+
+	day := domain.ArenaDay(now)
+	if st.RerollDay.IsZero() || !domain.ArenaDay(st.RerollDay).Equal(day) {
+		st.RerollDay = day
+		st.RerollsToday = 0
+		st.RerollReadyAt = time.Time{}
+	}
+
+	freeOK := (st.RerollsToday == 0) || !now.Before(st.RerollReadyAt)
+	if !pay && !freeOK {
+		return st, 0, domain.ErrArenaRerollCooldown
+	}
+
+	energyNow := 0
+	if pay {
+		var energy int
+		var updatedAt time.Time
+		err = tx.QueryRow(ctx, `
+			SELECT energy, energy_updated_at
+			FROM cats
+			WHERE user_id=$1
+			FOR UPDATE
+		`, userID).Scan(&energy, &updatedAt)
+		if err != nil {
+			return domain.ArenaState{}, 0, err
+		}
+		energyNow = domain.RegenEnergy(energy, updatedAt, now)
+		if energyNow < energyCost {
+			return st, energyNow, domain.ErrArenaNotEnoughEnergy
+		}
+		energyNow -= energyCost
+		_, err = tx.Exec(ctx, `
+			UPDATE cats
+			SET energy=$2, energy_updated_at=$3, updated_at=now()
+			WHERE user_id=$1
+		`, userID, energyNow, now)
+		if err != nil {
+			return domain.ArenaState{}, 0, err
+		}
+	}
+
+	st.RerollsToday++
+	cd := domain.ArenaRerollCooldown(st.RerollsToday)
+	st.RerollReadyAt = now.Add(cd)
+	if err := r.saveStateTx(ctx, tx, userID, st); err != nil {
+		return domain.ArenaState{}, 0, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.ArenaState{}, 0, err
+	}
+	return st, energyNow, nil
+}
+
 
 func catPowerTx(ctx context.Context, tx pgx.Tx, userID int64) (int, error) {
 	var power int

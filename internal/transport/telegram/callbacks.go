@@ -21,6 +21,7 @@ const (
 
 	CBArenaRefresh   = "arena:refresh"
 	CBArenaReroll    = "arena:reroll"
+	CBArenaRerollPay = "arena:reroll:pay"
 	CBArenaFightPref = "arena:fight:" 
 )
 
