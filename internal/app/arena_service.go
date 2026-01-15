@@ -130,6 +130,7 @@ func (s *ArenaService) Fight(
 				Breed:         attBreed,
 				Level:         attLevel,
 				Now:           now,
+				Seed:          seed,
 				OpponentName:  defName,
 				OpponentBreed: defBreed,
 				OpponentLevel: defLevel,

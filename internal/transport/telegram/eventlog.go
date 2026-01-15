@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"catforge/internal/app"
 	"catforge/internal/domain"
@@ -105,26 +106,29 @@ func (l *TelegramEventLog) ArenaFight(ctx context.Context, e app.ArenaFightEvent
     if e.RiskMulPct > 0 {
         riskMul = fmt.Sprintf("x%.2f", float64(e.RiskMulPct)/100.0)
     }
-    sp := ""
+
+
+    storyLines := narrative.ArenaFightStory(name, opp, e.Seed, e.Won, e.RageAfter)
+
+    summary := outcome + "\n" +
+        "➕ +" + itoa64(e.XPGain) + " XP | 🏆 Рейтинг: " + itoa(e.NewRating) + " (" + rd + ")\n" +
+        "⚖️ Бой: " + strings.TrimPrefix(rel, "⚔️ ") + " | 🎲 Риск: " + riskMul
+
     if e.SeasonDelta != 0 {
-        sp = " • сезон +" + itoa(e.SeasonDelta)
+        summary += " | 🌱 Сезон: + " + itoa(e.SeasonDelta)
     }
+    summary += " | 🔥 Ярость: + " + itoa(e.RageAfter-e.RageBefore)
 
-
-    line := "🏟️ " + badge + " " + name + " vs " + opp + ": " + outcome +
-        " • +" + itoa64(e.XPGain) + " XP" +
-        " • рейтинг " + itoa(e.NewRating) + " (" + rd + ")" +
-        " • " + rel +
-        " • риск " + riskMul +
-        sp +
-        " • ярость " + itoa(e.RageAfter)
+    text := "🏟️ " + badge + " " + name + " vs " + opp + "\n\n" +
+        strings.Join(storyLines, "\n") + "\n\n" +
+        summary
         
 
     if e.LeveledUp > 0 && lvl > 1 {
-        line += " → уровень " + itoa(lvl)
+        text += "\n→ уровень " + itoa(lvl)
     }
 
-    if err := l.s.Text(ctx, e.ChatID, line); err != nil {
+    if err := l.s.Text(ctx, e.ChatID, text); err != nil {
         l.log.Error("eventlog send failed", logx.Any("err", err))
         return err
     }

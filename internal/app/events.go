@@ -41,6 +41,7 @@ type ArenaFightEvent struct {
     Breed      domain.Breed
     Level      int
     Now        time.Time
+    Seed       string
 
     OpponentName string
     OpponentBreed domain.Breed
