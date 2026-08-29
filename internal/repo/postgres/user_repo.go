@@ -2,9 +2,12 @@ package postgres
 
 import (
 	"context"
-	"time"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"catforge/internal/app"
 )
 
 type UserRepo struct{ pool *pgxpool.Pool }
@@ -41,51 +44,37 @@ func (r *UserRepo) SetPendingAction(ctx context.Context, userID int64, action st
 	return err
 }
 
-func (r *UserRepo) GetHomeChat(ctx context.Context, userID int64) (int64, string, error) {
-	var chatID int64
-	var chatType string
+func (r *UserRepo) GetPendingInput(ctx context.Context, userID, chatID int64) (*app.PendingInput, error) {
+	var input app.PendingInput
 	err := r.pool.QueryRow(ctx, `
-		SELECT home_chat_id, home_chat_type
-		FROM users
-		WHERE id = $1
-	`, userID).Scan(&chatID, &chatType)
-	return chatID, chatType, err
+		SELECT user_id, telegram_chat_id, kind, prompt_message_id, expires_at
+		FROM pending_inputs
+		WHERE user_id = $1 AND telegram_chat_id = $2 AND expires_at > now()
+	`, userID, chatID).Scan(&input.UserID, &input.ChatID, &input.Kind, &input.PromptMessageID, &input.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &input, nil
 }
 
-func (r *UserRepo) SetHomeChat(ctx context.Context, userID int64, chatID int64, chatType string) error {
-	if chatID == 0 {
-		_, err := r.pool.Exec(ctx, `
-			UPDATE users
-			SET home_chat_id = 0,
-			    home_chat_type = '',
-			    home_chat_bound_at = NULL,
-			    home_chat_last_log_at = NULL
-			WHERE id = $1
-		`, userID)
-		return err
-	}
+func (r *UserRepo) SavePendingInput(ctx context.Context, input app.PendingInput) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE users
-		SET home_chat_id = $2,
-		    home_chat_type = $3,
-		    home_chat_bound_at = now()
-		WHERE id = $1
-	`, userID, chatID, chatType)
+		INSERT INTO pending_inputs (user_id, telegram_chat_id, kind, prompt_message_id, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_id, telegram_chat_id) DO UPDATE
+		SET kind = EXCLUDED.kind,
+		    prompt_message_id = EXCLUDED.prompt_message_id,
+		    expires_at = EXCLUDED.expires_at
+	`, input.UserID, input.ChatID, input.Kind, input.PromptMessageID, input.ExpiresAt)
 	return err
 }
 
-func (r *UserRepo) TryTouchHomeChatLog(ctx context.Context, userID int64, now time.Time, minInterval time.Duration) (bool, error) {
-	threshold := now.Add(-minInterval)
-	var ok int
-	err := r.pool.QueryRow(ctx, `
-		UPDATE users
-		SET home_chat_last_log_at = $2
-		WHERE id = $1
-		  AND (home_chat_last_log_at IS NULL OR home_chat_last_log_at <= $3)
-		RETURNING 1
-	`, userID, now, threshold).Scan(&ok)
-	if err != nil {
-		return false, nil
-	}
-	return true, nil
+func (r *UserRepo) ClearPendingInput(ctx context.Context, userID, chatID int64) error {
+	_, err := r.pool.Exec(ctx, `
+		DELETE FROM pending_inputs WHERE user_id = $1 AND telegram_chat_id = $2
+	`, userID, chatID)
+	return err
 }

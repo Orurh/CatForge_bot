@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.codex
+.agents
+catforge-bot-all-code.txt
+engine_cpp/build
+deploy/certs
+*.log

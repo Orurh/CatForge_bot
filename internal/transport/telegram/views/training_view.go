@@ -11,7 +11,8 @@ import (
 
 func FormatTrainingScreen(c *domain.Cat, now time.Time) (text string, canTrain bool) {
 	energy := domain.RegenEnergy(c.Energy, c.EnergyUpdatedAt, now)
-	canTrain = energy >= domain.TrainingMinEnergy
+	energyCost := domain.TrainingEnergyCost(energy)
+	canTrain = energyCost > 0
 
 	_, effPercent := domain.TrainingEfficiency(c.LastTrainAt, now)
 
@@ -28,39 +29,55 @@ func FormatTrainingScreen(c *domain.Cat, now time.Time) (text string, canTrain b
 		}
 	}
 
-	text = "Охота\n" +
+	energyLine := "Энергия: " + strconv.Itoa(energy) + "/100 (минимум для тренировки: " + strconv.Itoa(domain.TrainingMinEnergy) + ")\n"
+	if canTrain {
+		energyLine = "Энергия: " + strconv.Itoa(energy) + "/100 (стоимость сейчас: " + strconv.Itoa(energyCost) + ")\n"
+	}
+
+	text = "Тренировка\n" +
 		"Имя: " + c.Name + "\n" +
 		"Уровень: " + strconv.Itoa(c.Level) + " (XP: " + strconv.FormatInt(c.XP, 10) + "/" + strconv.FormatInt(int64(c.Level)*100, 10) + ")\n" +
-		"Энергия: " + strconv.Itoa(energy) + "/100 (нужно минимум: 25)\n" +
+		energyLine +
 		"Эффективность: " + strconv.Itoa(effPercent) + "%\n" +
 		"Коэффициент XP: " + strconv.Itoa(effPercent) + "%" + suffix + "\n"
 
 	return text, canTrain
 }
 
-func FormatTrainingResultText(catName string, res domain.TrainResult) string {
+func FormatTrainingResultText(cat *domain.Cat, res domain.TrainResult, generatedNarrative string) string {
+	catName := ""
+	trait := domain.Trait("")
+	if cat != nil {
+		catName = cat.Name
+		trait = cat.Trait
+	}
 	switch res.Outcome {
 	case domain.TrainingNotEnoughEnergy:
 		if strings.TrimSpace(catName) == "" {
 			catName = "Кот"
 		}
-		return "⚡ " + catName + ": нужно больше энергии для охоты. Минимум: 25."
+		return "⚡ " + catName + ": нужно больше энергии для тренировки. Минимум: " + strconv.Itoa(domain.TrainingMinEnergy) + "."
 
 	default:
 		if strings.TrimSpace(catName) == "" {
 			catName = "Кот"
 		}
-		story := narrative.HuntStory(res.Encounter, res.Flavor)
-		msg := "🐾 " + catName + " " + story + ": +" + strconv.FormatInt(res.XPGain, 10) +
-			" XP, -" + strconv.Itoa(res.EnergyCost) + " энергии."
+		story := strings.TrimSpace(generatedNarrative)
+		if story == "" {
+			story = narrative.HuntStory(res.Encounter, trait, res.Flavor)
+		}
+		msg := "🐾 " + catName + " " + story + "\n\n" +
+			"⚡ −" + strconv.Itoa(res.EnergyCost) + " энергии\n" +
+			"⭐ +" + strconv.FormatInt(res.XPGain, 10) + " XP\n" +
+			"🪙 +" + strconv.FormatInt(res.CoinsGain, 10) + " монет"
 		if res.Crit {
-			msg += " ✨ КРИТ! x2 XP"
+			msg += "\n✨ КРИТ! x2 XP"
 		}
 		if res.EffPercent < 100 {
-			msg += " (эффективность: " + strconv.Itoa(res.EffPercent) + "%)"
+			msg += "\nЭффективность: " + strconv.Itoa(res.EffPercent) + "%"
 		}
 		if res.LeveledUp > 0 {
-			msg += " 🎉 Уровень повышен!"
+			msg += "\n🎉 Уровень повышен!"
 
 			// показываем прибавку
 			d := res.StatsGained

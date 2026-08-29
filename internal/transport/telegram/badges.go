@@ -9,11 +9,11 @@ func publicCatBadge(b domain.Breed, level int) string {
 	breedIcon := "🐱"
 	switch b {
 	case domain.BreedMaineCoon:
-		breedIcon = "🦁" 
+		breedIcon = "🦁"
 	case domain.BreedSiamese:
 		breedIcon = "🐈‍⬛"
 	case domain.BreedBritish:
-		breedIcon = "🐻" 
+		breedIcon = "🐻"
 	case domain.BreedBengal:
 		breedIcon = "🐆"
 	}

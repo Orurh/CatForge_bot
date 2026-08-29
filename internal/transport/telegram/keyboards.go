@@ -1,86 +1,128 @@
 package telegram
 
-func StarterBreedKeyboard() map[string]any {
+import (
+	"strconv"
+
+	"catforge/internal/app"
+	"catforge/internal/domain"
+)
+
+func StarterBreedKeyboard(ownerUserID int64) map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
 			{
-				{"text": "Мейн-кун (HP)", "callback_data": CBStarterPrefix + "maine_coon"},
-				{"text": "Сиам (SPD)", "callback_data": CBStarterPrefix + "siamese"},
+				{"text": contentText("button.starter.maine_coon"), "callback_data": PersonalCallback(ownerUserID, CBStarterPrefix+"maine_coon")},
+				{"text": contentText("button.starter.siamese"), "callback_data": PersonalCallback(ownerUserID, CBStarterPrefix+"siamese")},
 			},
 			{
-				{"text": "Британец (DEF)", "callback_data": CBStarterPrefix + "british"},
-				{"text": "Бенгал (ATK)", "callback_data": CBStarterPrefix + "bengal"},
+				{"text": contentText("button.starter.british"), "callback_data": PersonalCallback(ownerUserID, CBStarterPrefix+"british")},
+				{"text": contentText("button.starter.bengal"), "callback_data": PersonalCallback(ownerUserID, CBStarterPrefix+"bengal")},
 			},
 		},
 	}
 }
 
-func MainMenuKeyboard() map[string]any {
+func MainMenuKeyboard(ownerUserID int64) map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
 			{
-				{"text": "Профиль кота", "callback_data": CBMenuCat},
-				{"text": "Охота", "callback_data": CBMenuTrain},
+				{"text": contentText("button.train"), "callback_data": PersonalCallback(ownerUserID, CBTrainDo)},
+				{"text": contentText("button.profile"), "callback_data": PersonalCallback(ownerUserID, CBMenuCat)},
 			},
 			{
-				{"text": "Экспедиция", "callback_data": CBMenuExp},
-				{"text": "Арена", "callback_data": CBMenuPVP},
+				{"text": contentText("button.yard"), "callback_data": PersonalCallback(ownerUserID, CBMenuYard)},
+				{"text": contentText("button.fight"), "callback_data": PersonalCallback(ownerUserID, CBMenuFight)},
 			},
-			{{"text": "♻️ Убить котика и начать заново", "callback_data": CBResetAsk}},
+			{{"text": contentText("button.askcat"), "callback_data": PersonalCallback(ownerUserID, CBMenuAskCat)}},
 		},
 	}
 }
 
-func ResetConfirmKeyboard() map[string]any {
-	return map[string]any{
-		"inline_keyboard": [][]map[string]any{
-			{
-				{"text": "✅ Да, убить котика", "callback_data": CBResetConfirm},
-			},
-			{
-				{"text": "❌ Отмена", "callback_data": CBNavMenu},
-			},
-		},
-	}
+func BestiaryKeyboard() map[string]any {
+	return map[string]any{"inline_keyboard": [][]map[string]any{{{"text": "⬅️ Назад", "callback_data": CBNavMenu}}}}
 }
 
-func ProfileKeyboard() map[string]any {
+func ResetConfirmKeyboard(ownerUserID int64) map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
 			{
-				{"text": "✏️ Имя", "callback_data": CBNameAsk},
-				{"text": "🔄 Обновить", "callback_data": CBProfileRefresh},
-			},
-			{{"text": "⬅️ Назад", "callback_data": CBNavMenu}},
-		},
-	}
-}
-
-func NamePromptKeyboard() map[string]any {
-	return map[string]any{
-		"inline_keyboard": [][]map[string]any{
-			{
-				{"text": "Пропустить (оставить текущее)", "callback_data": CBNameSkip},
+				{"text": contentText("button.reset_confirm"), "callback_data": PersonalCallback(ownerUserID, CBResetConfirm)},
 			},
 			{
-				{"text": "⬅️ Назад", "callback_data": CBMenuCat},
-				{"text": "🏠 Меню", "callback_data": CBNavMenu},
+				{"text": contentText("button.cancel"), "callback_data": PersonalCallback(ownerUserID, CBMenuCat)},
 			},
 		},
 	}
 }
 
-func TrainingKeyboard(canTrain bool) map[string]any {
-	btn := map[string]any{"text": "🏋️ Выйти на охоту", "callback_data": CBTrainDo}
+func ProfileKeyboard(ownerUserID int64) map[string]any {
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{{"text": contentText("button.train"), "callback_data": PersonalCallback(ownerUserID, CBTrainDo)}},
+			{
+				{"text": contentText("button.name"), "callback_data": PersonalCallback(ownerUserID, CBNameAsk)},
+				{"text": contentText("button.refresh"), "callback_data": PersonalCallback(ownerUserID, CBProfileRefresh)},
+			},
+			{
+				{"text": contentText("button.autospeak"), "callback_data": PersonalCallback(ownerUserID, CBProfileAutoSpeak)},
+				{"text": contentText("button.humor"), "callback_data": PersonalCallback(ownerUserID, CBProfileHumor)},
+			},
+			{{"text": contentText("button.reset"), "callback_data": PersonalCallback(ownerUserID, CBResetAsk)}},
+			{{"text": contentText("button.back"), "callback_data": PersonalCallback(ownerUserID, CBNavMenu)}},
+		},
+	}
+}
+
+func CollectionKeyboard(entries []app.CollectionEntry) map[string]any {
+	rows := make([][]map[string]any, 0, len(entries)+1)
+	for _, entry := range entries {
+		mark := "▫️ "
+		if entry.Owned.Equipped {
+			mark = "✅ "
+		}
+		rows = append(rows, []map[string]any{{"text": mark + entry.Definition.Name, "callback_data": CBCollectionItemPrefix + entry.Definition.ID}})
+	}
+	rows = append(rows, []map[string]any{{"text": "⬅️ В профиль", "callback_data": CBMenuCat}})
+	return map[string]any{"inline_keyboard": rows}
+}
+
+func CollectionItemKeyboard(entry app.CollectionEntry) map[string]any {
+	rows := make([][]map[string]any, 0, 3)
+	if !entry.Owned.Equipped {
+		rows = append(rows, []map[string]any{{"text": "✅ Надеть", "callback_data": CBCollectionEquipPrefix + entry.Definition.ID}})
+	}
+	if _, _, ok := domain.UpgradeCost(entry.Owned.Level); ok {
+		rows = append(rows, []map[string]any{{"text": "⬆️ Улучшить", "callback_data": CBCollectionUpgradePrefix + entry.Definition.ID}})
+	}
+	rows = append(rows, []map[string]any{{"text": "⬅️ К коллекции", "callback_data": CBCollection}})
+	return map[string]any{"inline_keyboard": rows}
+}
+
+func NamePromptKeyboard(ownerUserID int64) map[string]any {
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{
+				{"text": "Пропустить (оставить текущее)", "callback_data": PersonalCallback(ownerUserID, CBNameSkip)},
+			},
+			{
+				{"text": "⬅️ Назад", "callback_data": PersonalCallback(ownerUserID, CBMenuCat)},
+				{"text": "🏠 Меню", "callback_data": PersonalCallback(ownerUserID, CBNavMenu)},
+			},
+		},
+	}
+}
+
+func TrainingKeyboard(ownerUserID int64, canTrain bool) map[string]any {
+	btn := map[string]any{"text": contentText("button.train"), "callback_data": PersonalCallback(ownerUserID, CBTrainDo)}
 	if !canTrain {
-		btn = map[string]any{"text": "⏳ Охота недоступна", "callback_data": CBNoop}
+		btn = map[string]any{"text": "⏳ Тренировка недоступна", "callback_data": PersonalCallback(ownerUserID, CBNoop)}
 	}
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
 			{btn},
 			{
-				{"text": "🔄 Обновить", "callback_data": CBTrainRefresh},
-				{"text": "⬅️ Назад", "callback_data": CBNavMenu},
+				{"text": contentText("button.refresh"), "callback_data": PersonalCallback(ownerUserID, CBTrainRefresh)},
+				{"text": contentText("button.back"), "callback_data": PersonalCallback(ownerUserID, CBNavMenu)},
 			},
 		},
 	}
@@ -94,4 +136,59 @@ func ArenaKeyboard() map[string]any {
 			},
 		},
 	}
+}
+
+func ExpeditionKeyboard(canExplore bool) map[string]any {
+	if !canExplore {
+		return map[string]any{"inline_keyboard": [][]map[string]any{
+			{{"text": "⏳ Не хватает энергии", "callback_data": CBNoop}},
+			{{"text": "🔄 Обновить", "callback_data": CBExpeditionRefresh}, {"text": "⬅️ Назад", "callback_data": CBNavMenu}},
+		}}
+	}
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{{"text": "🛹 Переулки", "callback_data": CBExpeditionChoosePrefix + "alley"}},
+			{{"text": "🏙 Крыши", "callback_data": CBExpeditionChoosePrefix + "rooftop"}},
+			{{"text": "🌲 Старый парк", "callback_data": CBExpeditionChoosePrefix + "park"}},
+			{
+				{"text": "🔄 Обновить", "callback_data": CBExpeditionRefresh},
+				{"text": "⬅️ Назад", "callback_data": CBNavMenu},
+			},
+		},
+	}
+}
+
+func ExpeditionLootKeyboard(canExplore bool, itemID string) map[string]any {
+	base := ExpeditionKeyboard(canExplore)
+	rows, _ := base["inline_keyboard"].([][]map[string]any)
+	lootRows := [][]map[string]any{
+		{{"text": "✅ Надеть предмет", "callback_data": CBCollectionEquipPrefix + itemID}},
+		{{"text": "🎒 Открыть коллекцию", "callback_data": CBCollection}},
+	}
+	base["inline_keyboard"] = append(lootRows, rows...)
+	return base
+}
+
+func ExpeditionDifficultyKeyboard(location string, energy int) map[string]any {
+	button := func(text, difficulty string, cost int) map[string]any {
+		if energy < cost {
+			return map[string]any{"text": "🔒 " + text, "callback_data": CBNoop}
+		}
+		return map[string]any{"text": text, "callback_data": CBExpeditionDoPrefix + location + ":" + difficulty}
+	}
+	return map[string]any{"inline_keyboard": [][]map[string]any{
+		{button("🟢 Лёгко ("+strconv.Itoa(domain.ExpeditionCost(domain.ExpeditionEasy))+")", "easy", domain.ExpeditionCost(domain.ExpeditionEasy))},
+		{button("🟡 Нормально ("+strconv.Itoa(domain.ExpeditionCost(domain.ExpeditionNormal))+")", "normal", domain.ExpeditionCost(domain.ExpeditionNormal))},
+		{button("🔴 Сложно ("+strconv.Itoa(domain.ExpeditionCost(domain.ExpeditionHard))+")", "hard", domain.ExpeditionCost(domain.ExpeditionHard))},
+		{{"text": "⬅️ К локациям", "callback_data": CBExpeditionRefresh}},
+	}}
+}
+
+func YardEventKeyboard(eventID int64, counts map[domain.YardEventChoiceID]int) map[string]any {
+	prefix := CBYardChoicePrefix + strconv.FormatInt(eventID, 10) + ":"
+	return map[string]any{"inline_keyboard": [][]map[string]any{
+		{{"text": "😼 Украсть · " + strconv.Itoa(counts[domain.YardChoiceSteal]), "callback_data": prefix + string(domain.YardChoiceSteal)}},
+		{{"text": "🐈 Отвлечь · " + strconv.Itoa(counts[domain.YardChoiceDistract]), "callback_data": prefix + string(domain.YardChoiceDistract)}},
+		{{"text": "🔎 Разведать · " + strconv.Itoa(counts[domain.YardChoiceScout]), "callback_data": prefix + string(domain.YardChoiceScout)}},
+	}}
 }

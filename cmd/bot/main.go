@@ -13,9 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	"catforge/internal/ai"
 	"catforge/internal/app"
 	"catforge/internal/assets"
 	"catforge/internal/config"
+	"catforge/internal/gameengine"
 	"catforge/internal/logx"
 	"catforge/internal/repo/postgres"
 	tg "catforge/internal/transport/telegram"
@@ -65,29 +67,61 @@ func main() {
 	users := postgres.NewUserRepo(pool)
 	clock := app.SystemClock{}
 	rng := app.MathRNG{}
-	cats := postgres.NewCatRepo(pool, rng)
+	engine, err := gameengine.NewRemoteEngine(cfg.GameEngineAddr)
+	if err != nil {
+		log.Fatalf("game engine: %v", err)
+	}
+	defer engine.Close()
+	logger.Info("using C++ game engine", logx.String("address", cfg.GameEngineAddr))
+	cats := postgres.NewCatRepo(pool)
+	personalities := postgres.NewPersonalityRepo(pool)
+	quota := postgres.NewAIQuotaRepo(pool)
+	yards := postgres.NewYardRepo(pool)
+	yardEvents := postgres.NewYardEventRepo(pool)
+	fights := postgres.NewFightRepo(pool)
+	items := postgres.NewItemRepo(pool)
+	updates := postgres.NewTelegramUpdateRepo(pool)
+	eventStore := postgres.NewGameEventRepo(pool)
 
 	// event log adapter (telegram)
 	sender := tg.NewSender(cfg.TelegramToken, logger.With(logx.String("component", "telegram_sender")))
-	ev := tg.NewTelegramEventLog(sender, logger.With(logx.String("component", "telegram_eventlog")))
-
-	a := app.New(users, cats, clock, rng, ev)
-
-	// Telegram webhook registration
-	if cfg.PublicBaseURL == "" {
-		log.Printf("WARN: PUBLIC_BASE_URL is empty; skipping webhook registration (env=%s)", cfg.Env)
-	} else {
-		bot := tg.New(a, cfg.TelegramToken, cfg.PublicBaseURL, cfg.WebhookPath)
-		if err := bot.RegisterWebhook(ctx); err != nil {
-			if cfg.Env == "dev" {
-				log.Printf("WARN: setWebhook failed (dev mode): %v", err)
-			} else {
-				log.Fatalf("setWebhook: %v", err)
-			}
+	telegramEvents := tg.NewTelegramGameEventSink(sender, logger.With(logx.String("component", "telegram_events")))
+	events := app.NewGameEventFanout(eventStore, telegramEvents)
+	var aiProvider ai.Provider
+	if cfg.AIProvider == "openai" {
+		aiProvider, err = ai.NewOpenAIProvider(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModel, nil)
+		if err != nil {
+			log.Fatalf("AI provider: %v", err)
 		}
 	}
+	voice := ai.NewGateway(aiProvider, ai.NewFallbackProvider(), postgres.NewAIUsageRepo(pool), cfg.AITimeout)
+	logger.Info("AI gateway configured", logx.String("provider", cfg.AIProvider))
 
-	router := tg.NewRouter(a, sender, cfg.PublicBaseURL, cfg.BotUsername, logger.With(logx.String("component", "telegram_router")))
+	a := app.New(users, cats, personalities, quota, yards, yardEvents, fights, items, updates, engine, voice, clock, rng, events)
+	go runYardEventResolver(ctx, a.YardEvent, logger.With(logx.String("component", "yard_event_resolver")))
+
+	router := tg.NewRouter(a, sender, cfg.PublicBaseURL, cfg.BotUsername, cfg.WebhookSecret, logger.With(logx.String("component", "telegram_router")))
+	telegramBot := tg.New(a, cfg.TelegramToken, cfg.PublicBaseURL, cfg.WebhookPath, cfg.WebhookSecret)
+	if err := telegramBot.RegisterCommands(ctx); err != nil {
+		logger.Warn("Telegram command menu registration failed", logx.Any("err", err))
+	} else {
+		logger.Info("Telegram command menus registered")
+	}
+	if cfg.TelegramMode == "polling" {
+		if err := telegramBot.DeleteWebhook(ctx, false); err != nil {
+			log.Fatalf("deleteWebhook before polling: %v", err)
+		}
+		logger.Info("telegram long polling enabled")
+		go runPolling(ctx, telegramBot, router, logger.With(logx.String("component", "telegram_polling")))
+	} else if cfg.PublicBaseURL == "" {
+		log.Printf("WARN: PUBLIC_BASE_URL is empty; skipping webhook registration (env=%s)", cfg.Env)
+	} else if err := telegramBot.RegisterWebhook(ctx); err != nil {
+		if cfg.Env == "dev" {
+			log.Printf("WARN: setWebhook failed (dev mode): %v", err)
+		} else {
+			log.Fatalf("setWebhook: %v", err)
+		}
+	}
 
 	mux := http.NewServeMux()
 	staticFS, err := fs.Sub(assets.FS, "static")
@@ -119,4 +153,43 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
+}
+
+func runYardEventResolver(ctx context.Context, service *app.YardEventService, logger logx.Logger) {
+	const interval = 15 * time.Second
+	resolve := func() {
+		count, err := service.ResolveDue(ctx, 20)
+		if err != nil && ctx.Err() == nil {
+			logger.Warn("yard event resolution failed", logx.Any("err", err))
+			return
+		}
+		if count > 0 {
+			logger.Info("yard events resolved", logx.Int("count", count))
+		}
+	}
+	resolve()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			resolve()
+		}
+	}
+}
+
+func runPolling(ctx context.Context, bot *tg.Bot, router *tg.Router, logger logx.Logger) {
+	const retryDelay = 2 * time.Second
+	for ctx.Err() == nil {
+		if err := bot.Poll(ctx, router.HandleUpdate); err != nil && ctx.Err() == nil {
+			logger.Warn("telegram polling interrupted; retrying", logx.Any("err", err), logx.Any("retry_in", retryDelay))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(retryDelay):
+		}
+	}
 }

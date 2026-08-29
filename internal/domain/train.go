@@ -12,6 +12,7 @@ const (
 type TrainResult struct {
 	Outcome     TrainingOutcome
 	XPGain      int64
+	CoinsGain   int64
 	EnergyCost  int
 	Crit        bool
 	EffPercent  int // 50..100 (soft limiter)

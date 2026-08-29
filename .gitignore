@@ -1,5 +1,6 @@
 .env
-.env.example
+!.env.example
 .docker-compose.dev.yml
 .docker-compose.override.yml
 *.log
+engine_cpp/build/

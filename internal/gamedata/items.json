@@ -1,0 +1,16 @@
+[
+  {"id":"rat_tooth","name":"Крысиный зуб","slot":"claws","rarity":"common","location":"alley","base_stats":{"ATK":3},"per_level_stats":{"ATK":1}},
+  {"id":"janitor_glove","name":"Перчатка дворника","slot":"claws","rarity":"rare","location":"alley","base_stats":{"ATK":4},"per_level_stats":{"ATK":1},"effect_id":"first_strike_10"},
+  {"id":"string_collar","name":"Ошейник из шнурка","slot":"collar","rarity":"common","location":"alley","base_stats":{"HP":6},"per_level_stats":{"HP":2}},
+  {"id":"sour_cream_lid","name":"Крышка от сметаны","slot":"charm","rarity":"rare","location":"alley","base_stats":{"SPD":2},"per_level_stats":{"SPD":1},"effect_id":"coins_10"},
+
+  {"id":"antenna_shard","name":"Обломок антенны","slot":"claws","rarity":"common","location":"rooftop","base_stats":{"ATK":4},"per_level_stats":{"ATK":1}},
+  {"id":"pigeon_feather","name":"Голубиное перо","slot":"charm","rarity":"rare","location":"rooftop","base_stats":{"SPD":3},"per_level_stats":{"SPD":1}},
+  {"id":"dog_tag","name":"Собачий жетон","slot":"collar","rarity":"rare","location":"rooftop","base_stats":{"DEF":4},"per_level_stats":{"DEF":1}},
+  {"id":"shoelace","name":"Кроссовочный шнурок","slot":"charm","rarity":"epic","location":"rooftop","base_stats":{"SPD":4},"per_level_stats":{"SPD":1},"effect_id":"initiative_10"},
+
+  {"id":"lynx_claw","name":"Коготь рыси","slot":"claws","rarity":"rare","location":"park","base_stats":{"ATK":5},"per_level_stats":{"ATK":1}},
+  {"id":"furry_collar","name":"Мохнатый ошейник","slot":"collar","rarity":"rare","location":"park","base_stats":{"HP":8,"DEF":2},"per_level_stats":{"HP":2,"DEF":1}},
+  {"id":"old_lynx_eye","name":"Глаз старой рыси","slot":"charm","rarity":"epic","location":"park","base_stats":{"SPD":5},"per_level_stats":{"SPD":1},"effect_id":"first_crit_20"},
+  {"id":"cone_of_fate","name":"Шишка Судьбы","slot":"charm","rarity":"epic","location":"park","base_stats":{"DEF":3,"SPD":1},"per_level_stats":{"DEF":1},"effect_id":"low_hp_guard"}
+]

@@ -1,0 +1,49 @@
+{
+  "fight.queue.waiting": [
+    "🏟 {{.CatName}} вышел на арену и ждёт соперника.\nПовтори /fight, чтобы уйти.",
+    "🏟 {{.CatName}} занял арену. Пока здесь тихо — нужен второй боец.\nПовтори /fight, чтобы уйти."
+  ],
+  "fight.queue.canceled": [
+    "🐾 {{.CatName}} ушёл с арены.",
+    "🐾 {{.CatName}} решил пока не драться и покинул арену."
+  ],
+  "fight.start": [
+    "⚔️ {{.AttackerName}} полез на {{.DefenderName}}.",
+    "⚔️ {{.AttackerName}} решил выяснить отношения с {{.DefenderName}}.",
+    "⚔️ Во Дворе стало тихо: {{.AttackerName}} вызвал {{.DefenderName}}."
+  ],
+  "fight.result.win": [
+    "🏆 {{.WinnerName}} победил. {{.LoserName}} уже готовит убедительное объяснение.",
+    "🏆 Победа за {{.WinnerName}}. {{.LoserName}} требует пересчитать раунды.",
+    "🏆 {{.WinnerName}} остался на лапах и теперь выглядит невыносимо довольным."
+  ],
+  "fight.result.close": [
+    "Один удар решил всё. {{.WinnerName}} победил с {{.WinnerHP}} HP.",
+    "{{.LoserName}} почти дожал соперника, но у {{.WinnerName}} осталось {{.WinnerHP}} HP.",
+    "Драка закончилась на последней лапе: {{.WinnerName}} сохранил {{.WinnerHP}} HP."
+  ],
+  "fight.result.upset": [
+    "{{.WinnerName}} не прочитал прогнозы и победил более сильного соперника.",
+    "Уровни были против {{.WinnerName}}. Характер оказался за него."
+  ],
+  "fight.result.stats": [
+    "Раундов: {{.Rounds}}\n❤️ {{.WinnerName}}: {{.WinnerHP}} HP · {{.LoserName}}: 0 HP\n😾 Соперничество: {{.Rivalry}}"
+  ],
+  "fight.revenge.available": [
+    "{{.LoserName}}, это можно так не оставлять.",
+    "У {{.LoserName}} появился официальный повод для реванша."
+  ],
+  "fight.revenge.start": [
+    "😾 {{.AttackerName}} вернулся за реваншем к {{.DefenderName}}.",
+    "😾 {{.AttackerName}} заявил, что предыдущая драка была разминкой."
+  ],
+  "fight.limit.daily": [
+    "На сегодня {{.CatName}} уже достаточно выяснял отношения. Новые драки будут завтра."
+  ],
+  "fight.limit.pair": [
+    "Этой паре пора остыть. Двор уже запомнил, кто на кого как посмотрел."
+  ],
+  "fight.error.unavailable": [
+    "Арена сейчас недоступна. Попробуй /fight чуть позже."
+  ]
+}

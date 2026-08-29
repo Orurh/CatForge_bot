@@ -11,16 +11,7 @@ func StarterScreenURL(publicBase string) string {
 }
 
 func CatAvatarURL(publicBase string, c *domain.Cat) string {
-	tier := "base"
-	switch {
-	case c.Level >= 20:
-		tier = "diamond"
-	case c.Level >= 10:
-		tier = "gold"
-	case c.Level >= 5:
-		tier = "silver"
-	}
-
-	// v=level чтобы Telegram охотнее перезапрашивал при апе (кеш).
-	return fmt.Sprintf("%s/static/cats/%s_%s.png?v=%d", publicBase, c.Breed, tier, c.Level)
+	// Only base assets exist for now. Keep the URL valid at every level; visual
+	// tiers can be enabled as their optimized assets are added.
+	return fmt.Sprintf("%s/static/cats/%s_base.png?v=%d", publicBase, c.Breed, c.Level)
 }

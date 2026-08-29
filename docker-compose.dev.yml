@@ -1,4 +1,11 @@
 services:
+  game-engine:
+    build:
+      context: .
+      dockerfile: engine_cpp/Dockerfile
+    ports:
+      - "127.0.0.1:50051:50051"
+
   postgres:
     image: postgres:16
     environment:
@@ -19,16 +26,26 @@ services:
     build: .
     environment:
       APP_ENV: ${APP_ENV:-dev}
+      TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
       HTTP_ADDR: 0.0.0.0:8080
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       BOT_USERNAME: ${BOT_USERNAME} 
       WEBHOOK_PATH: ${WEBHOOK_PATH:-/tg/webhook}
       DATABASE_URL: ${DATABASE_URL}
+      GAME_ENGINE_ADDR: ${GAME_ENGINE_ADDR:-game-engine:50051}
+      AI_PROVIDER: ${AI_PROVIDER:-procedural}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_TIMEOUT: ${AI_TIMEOUT:-5s}
       MIGRATIONS_DIR: /app/migrations
     depends_on:
       postgres:
         condition: service_healthy
+      game-engine:
+        condition: service_started
     ports:
       - "8080:8080"
 

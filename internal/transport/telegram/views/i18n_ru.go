@@ -2,6 +2,21 @@ package views
 
 import "catforge/internal/domain"
 
+func BreedIcon(b domain.Breed) string {
+	switch b {
+	case domain.BreedMaineCoon:
+		return "🦁"
+	case domain.BreedSiamese:
+		return "🐈‍⬛"
+	case domain.BreedBritish:
+		return "🐻"
+	case domain.BreedBengal:
+		return "🐆"
+	default:
+		return "🐱"
+	}
+}
+
 func BreedRU(b domain.Breed) string {
 	switch b {
 	case domain.BreedMaineCoon:
@@ -20,15 +35,15 @@ func BreedRU(b domain.Breed) string {
 func TraitRU(t domain.Trait) string {
 	switch t {
 	case "lazy":
-		return "ленивый"
+		return "прокрастимятор"
 	case "bully":
-		return "задира"
+		return "царапыч"
 	case "philosopher":
 		return "философ"
 	case "neat":
-		return "аккуратист"
+		return "облезлый"
 	case "sleepy":
-		return "соня"
+		return "хромуля"
 	default:
 		return string(t)
 	}
