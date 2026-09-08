@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"bytes"
+	"catforge/internal/observability"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -35,7 +36,7 @@ func New(app *app.App, token, publicBaseURL, webhookPath, secret string) *Bot {
 }
 
 func (b *Bot) RegisterWebhook(ctx context.Context) error {
-	reqBody := map[string]any{"url": b.webhookURL}
+	reqBody := map[string]any{"url": b.webhookURL, "allowed_updates": []string{"message", "callback_query", "pre_checkout_query"}}
 	if b.secret != "" {
 		reqBody["secret_token"] = b.secret
 	}
@@ -85,11 +86,11 @@ func (b *Bot) RegisterCommands(ctx context.Context) error {
 	privateCommands := []BotCommand{
 		command("start"), command("profile"), command("train"), command("name"),
 		command("reset"), command("askcat"), command("cat"), command("autospeak"),
-		command("humor"),
+		command("humor"), command("support"),
 	}
 	groupCommands := []BotCommand{
 		command("start"), command("profile"), command("train"), command("name"), command("askcat"), command("cat"),
-		command("yard"), command("event"), command("fight"),
+		command("yard"), command("event"), command("fight"), command("week"),
 	}
 	adminCommands := append(append([]BotCommand{}, groupCommands...), command("yardsettings"), command("quiet"))
 	if err := b.setCommands(ctx, "all_private_chats", privateCommands); err != nil {
@@ -124,7 +125,19 @@ func (b *Bot) Poll(ctx context.Context, handle func(context.Context, Update) err
 		if err != nil {
 			return err
 		}
+		// Checkout deadlines take priority over slower game/AI handlers in a batch.
 		for _, update := range updates {
+			if update.PreCheckoutQuery != nil {
+				if err := handle(ctx, update); err != nil {
+					return err
+				}
+			}
+		}
+		for _, update := range updates {
+			if update.PreCheckoutQuery != nil {
+				offset = update.UpdateID + 1
+				continue
+			}
 			if err := handle(ctx, update); err != nil {
 				return fmt.Errorf("handle telegram update %d: %w", update.UpdateID, err)
 			}
@@ -133,11 +146,13 @@ func (b *Bot) Poll(ctx context.Context, handle func(context.Context, Update) err
 	}
 }
 
-func (b *Bot) getUpdates(ctx context.Context, offset int) ([]Update, error) {
+func (b *Bot) getUpdates(ctx context.Context, offset int) (updates []Update, resultErr error) {
+	started := time.Now()
+	defer func() { observability.Observe("telegram", "getUpdates", started, resultErr) }()
 	values := url.Values{}
 	values.Set("offset", strconv.Itoa(offset))
 	values.Set("timeout", "30")
-	values.Set("allowed_updates", `["message","callback_query"]`)
+	values.Set("allowed_updates", `["message","callback_query","pre_checkout_query"]`)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.methodURL("getUpdates"), bytes.NewBufferString(values.Encode()))
 	if err != nil {
@@ -207,17 +222,20 @@ func (b *Bot) methodURL(method string) string {
 }
 
 type Update struct {
-	UpdateID      int            `json:"update_id"`
-	Message       *Message       `json:"message,omitempty"`
-	CallbackQuery *CallbackQuery `json:"callback_query,omitempty"`
+	PreCheckoutQuery *PreCheckoutQuery `json:"pre_checkout_query,omitempty"`
+	UpdateID         int               `json:"update_id"`
+	Message          *Message          `json:"message,omitempty"`
+	CallbackQuery    *CallbackQuery    `json:"callback_query,omitempty"`
 }
 
 type Message struct {
-	MessageID      int      `json:"message_id"`
-	From           *User    `json:"from,omitempty"`
-	Chat           *Chat    `json:"chat,omitempty"`
-	Text           string   `json:"text,omitempty"`
-	ReplyToMessage *Message `json:"reply_to_message,omitempty"`
+	SuccessfulPayment *TelegramPayment `json:"successful_payment,omitempty"`
+	RefundedPayment   *TelegramPayment `json:"refunded_payment,omitempty"`
+	MessageID         int              `json:"message_id"`
+	From              *User            `json:"from,omitempty"`
+	Chat              *Chat            `json:"chat,omitempty"`
+	Text              string           `json:"text,omitempty"`
+	ReplyToMessage    *Message         `json:"reply_to_message,omitempty"`
 }
 
 type CallbackQuery struct {
@@ -234,5 +252,6 @@ type Chat struct {
 }
 
 type User struct {
-	ID int64 `json:"id"`
+	ID    int64 `json:"id"`
+	IsBot bool  `json:"is_bot,omitempty"`
 }

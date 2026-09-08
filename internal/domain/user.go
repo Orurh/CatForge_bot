@@ -53,6 +53,12 @@ const (
 )
 
 type Cat struct {
+	TrainingCritBonusPercent int // transient equipped-item bonus, never persisted as a stat
+	Feline                   FelineStats
+	FirstItemGranted         bool
+	LootItemID               string   // transient reward, persisted atomically with the action
+	ProgressionFacts         []string // transient facts returned by the authoritative engine
+
 	ID              int64
 	UserID          int64
 	StateVersion    int64

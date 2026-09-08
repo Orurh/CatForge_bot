@@ -5,6 +5,7 @@ package catforge.gameengine.v1;
 option go_package = "catforge/internal/gen/gameengine/v1;gameenginev1";
 
 service GameEngineService {
+ rpc Progress(ProgressRequest) returns (ProgressResponse);
   rpc Train(TrainRequest) returns (TrainResponse);
   rpc Expedition(ExpeditionRequest) returns (ExpeditionResponse);
   rpc ResolveYardEvent(ResolveYardEventRequest) returns (ResolveYardEventResponse);
@@ -12,6 +13,7 @@ service GameEngineService {
 }
 
 message TrainRequest {
+  int32 training_crit_bonus_percent = 6;
   uint32 rules_version = 1;
   CatState cat = 2;
   int64 now_unix_nanos = 3;
@@ -41,13 +43,18 @@ message CatState {
   int32 def_base = 14;
   int32 spd_base = 15;
   int64 coins = 16;
+ FelineStats feline = 17;
+ bool first_item_granted = 18;
 }
 
 message TrainingRandom {
+  int32 training_crit_roll = 5; // 0..99, independent of combat crits
+  // xp_gain_roll is 0..50, mapped to 75..125 percent in rules 13.
   int32 energy_cost_roll = 1;
   int32 xp_gain_roll = 2;
   int32 encounter_roll = 3;
   uint32 flavor_roll = 4;
+  int32 training_loot_roll = 6; // independent uniform 0..9999 (basis points)
 }
 
 enum TrainingOutcome {
@@ -81,6 +88,8 @@ message TrainResult {
   Encounter encounter = 8;
   uint32 flavor = 9;
   int64 coins_gain = 10;
+ string loot_item_id = 11;
+ repeated string progression_facts = 12;
 }
 
 message ExpeditionRequest {
@@ -192,6 +201,8 @@ message LootRoll {
 enum YardEventType {
   YARD_EVENT_TYPE_UNSPECIFIED = 0;
   YARD_EVENT_TYPE_FISH_TRUCK = 1;
+  YARD_EVENT_TYPE_BIG_DOG = 2;
+  YARD_EVENT_TYPE_BIG_BOX = 3;
 }
 
 enum YardEventChoice {
@@ -201,7 +212,17 @@ enum YardEventChoice {
   YARD_EVENT_CHOICE_SCOUT = 3;
 }
 
+enum YardEventOutcomeTier {
+  YARD_EVENT_OUTCOME_TIER_FAILURE = 0;
+  YARD_EVENT_OUTCOME_TIER_PARTIAL = 1;
+  YARD_EVENT_OUTCOME_TIER_SUCCESS = 2;
+  YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL = 3;
+}
+
 message YardEventParticipant {
+ FelineStats feline = 8;
+ repeated string effects = 9;
+ string special_action = 10;
   int64 cat_id = 1;
   YardEventChoice choice = 2;
   int32 level = 3;
@@ -223,19 +244,23 @@ message YardEventParticipantResult {
   int64 cat_id = 1;
   YardEventChoice choice = 2;
   int32 contribution = 3;
-  int32 fish_reward = 4;
+  reserved 4;
+  reserved "fish_reward";
   bool mvp = 5;
+ bool item_effect_triggered = 6;
 }
 
 message ResolveYardEventResponse {
   bool success = 1;
   int32 team_score = 2;
   int32 target_score = 3;
-  int32 fish_total = 4;
+  int32 yard_score = 4;
   bool secret_found = 5;
   int32 strategy_bonus = 6;
   repeated YardEventParticipantResult participants = 7;
   repeated YardRelationshipEffect relationship_effects = 8;
+  YardEventOutcomeTier outcome_tier = 9;
+  int64 xp_gain = 10;
 }
 
 message YardRelationshipEffect {
@@ -270,4 +295,27 @@ message FightResponse {
   int32 final_hp_a = 4;
   int32 final_hp_b = 5;
   repeated FightTurn turns = 6;
+}
+
+message FelineStats {
+ int32 claws_tenth_mm = 1;
+ int32 weight_grams = 2;
+ int32 tail_mm = 3;
+ int32 whisker_span_mm = 4;
+}
+message ProgressRequest {
+ uint32 rules_version = 1;
+ CatState cat = 2;
+ int64 xp_gain = 3;
+ uint64 seed = 4;
+ string source = 5;
+ string outcome_tier = 6;
+ bool secret_found = 7;
+ int32 energy_spent = 8;
+ int32 training_loot_roll = 9;
+}
+message ProgressResponse {
+ CatState cat = 1;
+ string loot_item_id = 2;
+ repeated string facts = 3;
 }

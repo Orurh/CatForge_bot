@@ -7,17 +7,11 @@
 
 namespace catforge::engine {
 
-inline constexpr std::uint32_t kCurrentRulesVersion = 8;
-inline constexpr std::uint32_t kCurrentContentVersion = 2;
+inline constexpr std::uint32_t kCurrentRulesVersion = 14;
+inline constexpr std::uint32_t kCurrentContentVersion = 5;
 inline constexpr std::int32_t kEnergyMax = 100;
-inline constexpr std::int32_t kTrainingMinEnergy = 25;
-inline constexpr std::int32_t kTrainingEnergyReserve = 10;
-inline constexpr std::int32_t kTrainingMaxEnergyCost = 90;
-// Temporary dev tuning for fast Telegram testing. Restore to 480'000'000'000
-// before production.
-inline constexpr std::int64_t kEnergyRegenIntervalNanos = 1'000'000'000;
-inline constexpr std::int64_t kEfficiencyWindowNanos = 60'000'000'000;
-inline constexpr double kMinimumEfficiency = 0.5;
+inline constexpr std::int32_t kTrainingMinEnergy = 50;
+inline constexpr std::int64_t kEnergyRegenIntervalNanos = 480'000'000'000;
 
 enum class TrainingOutcome {
   kOk,
@@ -41,6 +35,10 @@ struct StatDelta {
   bool operator==(const StatDelta &) const = default;
 };
 
+struct FelineStats {
+  std::int32_t claws_tenth_mm{}, weight_grams{}, tail_mm{}, whisker_span_mm{};
+  bool operator==(const FelineStats &) const = default;
+};
 struct CatState {
   std::int64_t id{};
   std::int64_t user_id{};
@@ -58,13 +56,17 @@ struct CatState {
   std::int32_t atk_base{};
   std::int32_t def_base{};
   std::int32_t spd_base{};
+  FelineStats feline;
+  bool first_item_granted{};
 };
 
 struct TrainingRandom {
+  std::int32_t training_crit_roll{};
   std::int32_t energy_cost_roll{};
   std::int32_t xp_gain_roll{};
   std::int32_t encounter_roll{};
   std::uint32_t flavor_roll{};
+  std::int32_t training_loot_roll{};
 };
 
 struct TrainingInput {
@@ -73,9 +75,12 @@ struct TrainingInput {
   CatState cat;
   std::int64_t now_unix_nanos{};
   TrainingRandom random;
+  std::int32_t training_crit_bonus_percent{};
 };
 
 struct TrainResult {
+  std::string loot_item_id;
+  std::vector<std::string> progression_facts;
   TrainingOutcome outcome{TrainingOutcome::kOk};
   std::int64_t xp_gain{};
   std::int32_t energy_cost{};
@@ -176,8 +181,14 @@ struct ExpeditionOutput {
   ExpeditionResult result;
 };
 
-enum class YardEventType { kUnspecified, kFishTruck };
+enum class YardEventType { kUnspecified, kFishTruck, kBigDog, kBigBox };
 enum class YardEventChoice { kUnspecified, kSteal, kDistract, kScout };
+enum class YardEventOutcomeTier {
+  kFailure,
+  kPartial,
+  kSuccess,
+  kExceptional,
+};
 
 struct YardEventParticipant {
   std::int64_t cat_id{};
@@ -187,6 +198,9 @@ struct YardEventParticipant {
   std::int32_t atk{};
   std::int32_t def{};
   std::int32_t spd{};
+  FelineStats feline;
+  std::vector<std::string> effects;
+  std::string special_action;
 };
 
 struct YardEventInput {
@@ -201,8 +215,9 @@ struct YardEventParticipantResult {
   std::int64_t cat_id{};
   YardEventChoice choice{YardEventChoice::kUnspecified};
   std::int32_t contribution{};
-  std::int32_t fish_reward{};
   bool mvp{};
+
+  bool item_effect_triggered{};
 
   bool operator==(const YardEventParticipantResult &) const = default;
 };
@@ -218,10 +233,11 @@ struct YardRelationshipEffect {
 };
 
 struct YardEventResult {
-  bool success{};
+  YardEventOutcomeTier outcome_tier{YardEventOutcomeTier::kFailure};
   std::int32_t team_score{};
   std::int32_t target_score{};
-  std::int32_t fish_total{};
+  std::int32_t yard_score{};
+  std::int64_t xp_gain{};
   bool secret_found{};
   std::int32_t strategy_bonus{};
   std::vector<YardEventParticipantResult> participants;
@@ -260,6 +276,24 @@ struct FightResult {
   bool operator==(const FightResult &) const = default;
 };
 
+struct ProgressInput {
+  CatState cat;
+  std::int64_t xp_gain{};
+  std::uint64_t seed{};
+  std::string source;
+  std::string outcome_tier;
+  bool secret_found{};
+  std::int32_t energy_spent{};
+  std::int32_t training_loot_roll{};
+};
+struct ProgressOutput {
+  CatState cat;
+  std::string loot_item_id;
+  std::vector<std::string> facts;
+};
+FelineStats BaseFelineStats(const std::string &breed);
+FelineStats FelineGrowth(const std::string &breed);
+ProgressOutput Progress(const ProgressInput &input);
 TrainingOutput Train(const TrainingInput &input);
 ExpeditionOutput Expedition(const ExpeditionInput &input);
 YardEventResult ResolveYardEvent(const YardEventInput &input);

@@ -1,0 +1,9 @@
+# Optional third overlay; external delivery must be configured explicitly.
+services:
+  alertmanager:
+    volumes:
+      - ./.monitoring-secrets/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    secrets: [telegram_token]
+secrets:
+  telegram_token:
+    file: ./.monitoring-secrets/telegram_token

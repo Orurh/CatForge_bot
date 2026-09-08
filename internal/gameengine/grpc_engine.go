@@ -1,6 +1,7 @@
 package gameengine
 
 import (
+	"catforge/internal/observability"
 	"context"
 	"errors"
 	"fmt"
@@ -21,7 +22,7 @@ type GRPCEngine struct {
 }
 
 func NewRemoteEngine(address string) (*GRPCEngine, error) {
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(observability.UnaryClientInterceptor))
 	if err != nil {
 		return nil, fmt.Errorf("create game engine client: %w", err)
 	}
@@ -53,8 +54,11 @@ func (e *GRPCEngine) Train(ctx context.Context, input TrainingInput) (TrainingOu
 	if response.GetCat() == nil || response.GetResult() == nil {
 		return TrainingOutput{}, errors.New("remote game engine returned an incomplete response")
 	}
+	cat := catFromProto(response.GetCat())
+	cat.LootItemID = response.GetResult().GetLootItemId()
+	cat.ProgressionFacts = append(response.GetResult().GetProgressionFacts(), domain.CrossedUnlocks(input.Cat.Level, cat.Level)...)
 	return TrainingOutput{
-		Cat:    catFromProto(response.GetCat()),
+		Cat:    cat,
 		Result: resultFromProto(response.GetResult()),
 	}, nil
 }
@@ -104,6 +108,7 @@ func (e *GRPCEngine) ResolveYardEvent(ctx context.Context, input YardEventInput)
 			CatId: participant.CatID, Choice: yardEventChoiceToProto(participant.Choice),
 			Level: int32(participant.Level), Hp: int32(participant.HP), Atk: int32(participant.ATK),
 			Def: int32(participant.DEF), Spd: int32(participant.SPD),
+			Feline: felineToProto(participant.Feline), Effects: participant.Effects, SpecialAction: participant.SpecialAction,
 		})
 	}
 	response, err := e.client.ResolveYardEvent(ctx, &gameenginev1.ResolveYardEventRequest{
@@ -148,16 +153,23 @@ func fightResultFromProto(value *gameenginev1.FightResponse) domain.FightResult 
 }
 
 func yardEventResultFromProto(value *gameenginev1.ResolveYardEventResponse) domain.YardEventResult {
+	tier := yardEventOutcomeTierFromProto(value.GetOutcomeTier())
+	if tier == domain.YardOutcomeFailure && value.GetSuccess() {
+		// Rolling deploy compatibility with rules-v9 engines.
+		tier = domain.YardOutcomeSuccess
+	}
 	result := domain.YardEventResult{
-		Success: value.GetSuccess(), TeamScore: int(value.GetTeamScore()), TargetScore: int(value.GetTargetScore()),
-		FishTotal: int(value.GetFishTotal()), SecretFound: value.GetSecretFound(), StrategyBonus: int(value.GetStrategyBonus()),
+		OutcomeTier: tier,
+		TeamScore:   int(value.GetTeamScore()), TargetScore: int(value.GetTargetScore()),
+		YardScore: int(value.GetYardScore()), XPGain: value.GetXpGain(),
+		SecretFound: value.GetSecretFound(), StrategyBonus: int(value.GetStrategyBonus()),
 		Participants:        make([]domain.YardEventParticipantResult, 0, len(value.GetParticipants())),
 		RelationshipEffects: make([]domain.YardRelationshipEffect, 0, len(value.GetRelationshipEffects())),
 	}
 	for _, participant := range value.GetParticipants() {
 		result.Participants = append(result.Participants, domain.YardEventParticipantResult{
 			CatID: participant.GetCatId(), Choice: yardEventChoiceFromProto(participant.GetChoice()),
-			Contribution: int(participant.GetContribution()), FishReward: int(participant.GetFishReward()), MVP: participant.GetMvp(),
+			Contribution: int(participant.GetContribution()), MVP: participant.GetMvp(), ItemEffectTriggered: participant.GetItemEffectTriggered(),
 		})
 	}
 	for _, effect := range value.GetRelationshipEffects() {
@@ -170,11 +182,30 @@ func yardEventResultFromProto(value *gameenginev1.ResolveYardEventResponse) doma
 	return result
 }
 
-func yardEventTypeToProto(value domain.YardEventType) gameenginev1.YardEventType {
-	if value == domain.YardEventFishTruck {
-		return gameenginev1.YardEventType_YARD_EVENT_TYPE_FISH_TRUCK
+func yardEventOutcomeTierFromProto(value gameenginev1.YardEventOutcomeTier) domain.YardEventOutcomeTier {
+	switch value {
+	case gameenginev1.YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_PARTIAL:
+		return domain.YardOutcomePartial
+	case gameenginev1.YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_SUCCESS:
+		return domain.YardOutcomeSuccess
+	case gameenginev1.YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL:
+		return domain.YardOutcomeExceptional
+	default:
+		return domain.YardOutcomeFailure
 	}
-	return gameenginev1.YardEventType_YARD_EVENT_TYPE_UNSPECIFIED
+}
+
+func yardEventTypeToProto(value domain.YardEventType) gameenginev1.YardEventType {
+	switch value {
+	case domain.YardEventFishTruck:
+		return gameenginev1.YardEventType_YARD_EVENT_TYPE_FISH_TRUCK
+	case domain.YardEventBigDog:
+		return gameenginev1.YardEventType_YARD_EVENT_TYPE_BIG_DOG
+	case domain.YardEventBigBox:
+		return gameenginev1.YardEventType_YARD_EVENT_TYPE_BIG_BOX
+	default:
+		return gameenginev1.YardEventType_YARD_EVENT_TYPE_UNSPECIFIED
+	}
 }
 
 func yardEventChoiceToProto(value domain.YardEventChoiceID) gameenginev1.YardEventChoice {
@@ -205,15 +236,18 @@ func yardEventChoiceFromProto(value gameenginev1.YardEventChoice) domain.YardEve
 
 func trainingRequestToProto(input TrainingInput) *gameenginev1.TrainRequest {
 	return &gameenginev1.TrainRequest{
-		RulesVersion:   input.RulesVersion,
-		ContentVersion: input.ContentVersion,
-		Cat:            catToProto(input.Cat),
-		NowUnixNanos:   input.Now.UnixNano(),
+		TrainingCritBonusPercent: int32(input.TrainingCritBonusPercent),
+		RulesVersion:             input.RulesVersion,
+		ContentVersion:           input.ContentVersion,
+		Cat:                      catToProto(input.Cat),
+		NowUnixNanos:             input.Now.UnixNano(),
 		Random: &gameenginev1.TrainingRandom{
-			EnergyCostRoll: int32(input.Random.EnergyCostRoll),
-			XpGainRoll:     int32(input.Random.XPGainRoll),
-			EncounterRoll:  int32(input.Random.EncounterRoll),
-			FlavorRoll:     uint32(input.Random.FlavorRoll),
+			TrainingLootRoll: int32(input.Random.TrainingLootRoll),
+			TrainingCritRoll: int32(input.Random.TrainingCritRoll),
+			EnergyCostRoll:   int32(input.Random.EnergyCostRoll),
+			XpGainRoll:       int32(input.Random.XPGainRoll),
+			EncounterRoll:    int32(input.Random.EncounterRoll),
+			FlavorRoll:       uint32(input.Random.FlavorRoll),
 		},
 	}
 }
@@ -234,6 +268,7 @@ func catToProto(cat domain.Cat) *gameenginev1.CatState {
 		AtkBase:      int32(cat.ATKBase),
 		DefBase:      int32(cat.DEFBase),
 		SpdBase:      int32(cat.SPDBase),
+		Feline:       felineToProto(cat.PhysicalStats()), FirstItemGranted: cat.FirstItemGranted,
 	}
 	if !cat.LastTrainAt.IsZero() {
 		nanos := cat.LastTrainAt.UnixNano()
@@ -262,6 +297,7 @@ func catFromProto(value *gameenginev1.CatState) domain.Cat {
 		ATKBase:      int(value.GetAtkBase()),
 		DEFBase:      int(value.GetDefBase()),
 		SPDBase:      int(value.GetSpdBase()),
+		Feline:       felineFromProto(value.GetFeline()), FirstItemGranted: value.GetFirstItemGranted(),
 	}
 	if value.LastTrainAtUnixNanos != nil {
 		cat.LastTrainAt = time.Unix(0, value.GetLastTrainAtUnixNanos())
@@ -419,4 +455,33 @@ func expeditionDifficultyToProto(difficulty domain.ExpeditionDifficulty) gameeng
 	default:
 		return gameenginev1.ExpeditionDifficulty_EXPEDITION_DIFFICULTY_UNSPECIFIED
 	}
+}
+
+func felineToProto(s domain.FelineStats) *gameenginev1.FelineStats {
+	return &gameenginev1.FelineStats{ClawsTenthMm: int32(s.ClawsTenthMM), WeightGrams: int32(s.WeightGrams), TailMm: int32(s.TailMM), WhiskerSpanMm: int32(s.WhiskerSpanMM)}
+}
+func felineFromProto(s *gameenginev1.FelineStats) domain.FelineStats {
+	return domain.FelineStats{ClawsTenthMM: int(s.GetClawsTenthMm()), WeightGrams: int(s.GetWeightGrams()), TailMM: int(s.GetTailMm()), WhiskerSpanMM: int(s.GetWhiskerSpanMm())}
+}
+func (e *GRPCEngine) Progress(ctx context.Context, in ProgressInput) (domain.Cat, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultRemoteTimeout)
+	defer cancel()
+	out, err := e.client.Progress(ctx, &gameenginev1.ProgressRequest{RulesVersion: CurrentRulesVersion, Cat: catToProto(in.Cat), XpGain: in.XPGain, Seed: in.Seed, Source: in.Source, OutcomeTier: in.OutcomeTier, SecretFound: in.SecretFound, EnergySpent: int32(in.EnergySpent), TrainingLootRoll: int32(in.TrainingLootRoll)})
+	if err != nil {
+		return domain.Cat{}, err
+	}
+	if out.GetCat() == nil {
+		return domain.Cat{}, errors.New("incomplete progression response")
+	}
+	cat := catFromProto(out.GetCat())
+	cat.LootItemID = out.GetLootItemId()
+	cat.ProgressionFacts = out.GetFacts()
+	return cat, nil
+}
+
+// Check verifies that the remote engine accepts the current rules. The engine
+// is stateless: this synthetic cat is never written to the database.
+func (e *GRPCEngine) Check(ctx context.Context) error {
+	_, err := e.Progress(ctx, ProgressInput{Cat: domain.Cat{ID: -1, Level: 1, Breed: domain.BreedBritish}, Source: "arena"})
+	return err
 }

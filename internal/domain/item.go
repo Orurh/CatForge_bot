@@ -19,14 +19,17 @@ const (
 const ItemMaxLevel = 5
 
 type ItemDefinition struct {
-	ID       string             `json:"id"`
-	Name     string             `json:"name"`
-	Slot     ItemSlot           `json:"slot"`
-	Rarity   ItemRarity         `json:"rarity"`
-	Location ExpeditionLocation `json:"location"`
-	Base     StatDelta          `json:"base_stats"`
-	PerLevel StatDelta          `json:"per_level_stats"`
-	EffectID string             `json:"effect_id,omitempty"`
+	TrainingCritBonusPercent int                `json:"training_crit_bonus_percent,omitempty"`
+	FelineBonus              FelineStats        `json:"feline_bonus"`
+	Ability                  string             `json:"ability"`
+	ID                       string             `json:"id"`
+	Name                     string             `json:"name"`
+	Slot                     ItemSlot           `json:"slot"`
+	Rarity                   ItemRarity         `json:"rarity"`
+	Location                 ExpeditionLocation `json:"location"`
+	Base                     StatDelta          `json:"base_stats"`
+	PerLevel                 StatDelta          `json:"per_level_stats"`
+	EffectID                 string             `json:"effect_id,omitempty"`
 }
 
 func (definition ItemDefinition) StatsAtLevel(level int) StatDelta {
@@ -72,4 +75,14 @@ func UpgradeCost(level int) (fragments int, coins int64, ok bool) {
 	default:
 		return 0, 0, false
 	}
+}
+
+func (d ItemDefinition) PhysicalBonus(level int) FelineStats {
+	level = max(1, min(level, ItemMaxLevel))
+	s := d.FelineBonus
+	s.ClawsTenthMM *= level
+	s.WeightGrams *= level
+	s.TailMM *= level
+	s.WhiskerSpanMM *= level
+	return s
 }

@@ -22,8 +22,8 @@ func StarterBreedKeyboard(ownerUserID int64) map[string]any {
 	}
 }
 
-func MainMenuKeyboard(ownerUserID int64) map[string]any {
-	return map[string]any{
+func MainMenuKeyboard(ownerUserID int64, levels ...int) map[string]any {
+	result := map[string]any{
 		"inline_keyboard": [][]map[string]any{
 			{
 				{"text": contentText("button.train"), "callback_data": PersonalCallback(ownerUserID, CBTrainDo)},
@@ -36,6 +36,12 @@ func MainMenuKeyboard(ownerUserID int64) map[string]any {
 			{{"text": contentText("button.askcat"), "callback_data": PersonalCallback(ownerUserID, CBMenuAskCat)}},
 		},
 	}
+	if len(levels) > 0 && levels[0] < 3 {
+		rows := result["inline_keyboard"].([][]map[string]any)
+		rows[1] = rows[1][:1]
+		result["inline_keyboard"] = rows
+	}
+	return result
 }
 
 func BestiaryKeyboard() map[string]any {
@@ -55,7 +61,27 @@ func ResetConfirmKeyboard(ownerUserID int64) map[string]any {
 	}
 }
 
-func ProfileKeyboard(ownerUserID int64) map[string]any {
+func ProfileKeyboard(ownerUserID int64, personalities ...*domain.CatPersonality) map[string]any {
+	autoLabel, humorLabel := "💬 Реплики: ?", "😼 Дерзкий юмор: ?"
+	autoAction, humorAction := CBProfileRefresh, CBProfileRefresh
+	if len(personalities) > 0 && personalities[0] != nil {
+		p := personalities[0]
+		autoLabel = "💬 Реплики: OFF"
+		autoValue := "on"
+		if p.AutoSpeakEnabled {
+			autoLabel = "💬 Реплики: ON"
+			autoValue = "off"
+		}
+		humorLabel = "😼 Дерзкий юмор: OFF"
+		humorValue := "bold"
+		if p.HumorMode == domain.HumorBold {
+			humorLabel = "😼 Дерзкий юмор: ON"
+			humorValue = "normal"
+		}
+		autoAction = preferenceAction("a", p.CatID, autoValue)
+		humorAction = preferenceAction("h", p.CatID, humorValue)
+	}
+
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
 			{{"text": contentText("button.train"), "callback_data": PersonalCallback(ownerUserID, CBTrainDo)}},
@@ -64,9 +90,10 @@ func ProfileKeyboard(ownerUserID int64) map[string]any {
 				{"text": contentText("button.refresh"), "callback_data": PersonalCallback(ownerUserID, CBProfileRefresh)},
 			},
 			{
-				{"text": contentText("button.autospeak"), "callback_data": PersonalCallback(ownerUserID, CBProfileAutoSpeak)},
-				{"text": contentText("button.humor"), "callback_data": PersonalCallback(ownerUserID, CBProfileHumor)},
+				{"text": autoLabel, "callback_data": PersonalCallback(ownerUserID, autoAction)},
+				{"text": humorLabel, "callback_data": PersonalCallback(ownerUserID, humorAction)},
 			},
+			{{"text": "❤️ Поддержать CatForge", "callback_data": PersonalCallback(ownerUserID, "support:open")}},
 			{{"text": contentText("button.reset"), "callback_data": PersonalCallback(ownerUserID, CBResetAsk)}},
 			{{"text": contentText("button.back"), "callback_data": PersonalCallback(ownerUserID, CBNavMenu)}},
 		},
@@ -86,14 +113,12 @@ func CollectionKeyboard(entries []app.CollectionEntry) map[string]any {
 	return map[string]any{"inline_keyboard": rows}
 }
 
-func CollectionItemKeyboard(entry app.CollectionEntry) map[string]any {
+func CollectionItemKeyboard(entry app.CollectionEntry, levels ...int) map[string]any {
 	rows := make([][]map[string]any, 0, 3)
-	if !entry.Owned.Equipped {
+	if !entry.Owned.Equipped && (len(levels) == 0 || domain.SlotUnlocked(entry.Definition.Slot, levels[0])) {
 		rows = append(rows, []map[string]any{{"text": "✅ Надеть", "callback_data": CBCollectionEquipPrefix + entry.Definition.ID}})
 	}
-	if _, _, ok := domain.UpgradeCost(entry.Owned.Level); ok {
-		rows = append(rows, []map[string]any{{"text": "⬆️ Улучшить", "callback_data": CBCollectionUpgradePrefix + entry.Definition.ID}})
-	}
+
 	rows = append(rows, []map[string]any{{"text": "⬅️ К коллекции", "callback_data": CBCollection}})
 	return map[string]any{"inline_keyboard": rows}
 }
@@ -184,11 +209,15 @@ func ExpeditionDifficultyKeyboard(location string, energy int) map[string]any {
 	}}
 }
 
-func YardEventKeyboard(eventID int64, counts map[domain.YardEventChoiceID]int) map[string]any {
+func YardEventKeyboard(eventID int64, eventType domain.YardEventType) map[string]any {
 	prefix := CBYardChoicePrefix + strconv.FormatInt(eventID, 10) + ":"
-	return map[string]any{"inline_keyboard": [][]map[string]any{
-		{{"text": "😼 Украсть · " + strconv.Itoa(counts[domain.YardChoiceSteal]), "callback_data": prefix + string(domain.YardChoiceSteal)}},
-		{{"text": "🐈 Отвлечь · " + strconv.Itoa(counts[domain.YardChoiceDistract]), "callback_data": prefix + string(domain.YardChoiceDistract)}},
-		{{"text": "🔎 Разведать · " + strconv.Itoa(counts[domain.YardChoiceScout]), "callback_data": prefix + string(domain.YardChoiceScout)}},
-	}}
+	rows := [][]map[string]any{
+		{{"text": contentText(yardEventContentKey(eventType, "button.steal")), "callback_data": prefix + string(domain.YardChoiceSteal)}},
+		{{"text": contentText(yardEventContentKey(eventType, "button.distract")), "callback_data": prefix + string(domain.YardChoiceDistract)}},
+		{{"text": contentText(yardEventContentKey(eventType, "button.scout")), "callback_data": prefix + string(domain.YardChoiceScout)}},
+	}
+	if action, ok := domain.FeaturedSpecial(eventType, eventID); ok {
+		rows = append(rows, []map[string]any{{"text": action.Label, "callback_data": prefix + action.ID}})
+	}
+	return map[string]any{"inline_keyboard": rows}
 }

@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"catforge/internal/observability"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 
 	"catforge/internal/app"
 	"catforge/internal/domain"
+	"catforge/internal/gamecontent"
 	"catforge/internal/logx"
 	"catforge/internal/transport/telegram/views"
 )
@@ -66,7 +68,17 @@ func (r *Router) WebhookHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 // HandleUpdate is shared by webhook and long-polling transports.
-func (r *Router) HandleUpdate(ctx context.Context, upd Update) error {
+func (r *Router) HandleUpdate(ctx context.Context, upd Update) (resultErr error) {
+	started := time.Now()
+	defer func() { observability.Observe("telegram", "handleUpdate", started, resultErr) }()
+	// Payment receipts have their own durable idempotency. Never claim them
+	// before the ledger commits, otherwise a failed write would lose the retry.
+	if upd.PreCheckoutQuery != nil {
+		return r.preCheckout(ctx, upd.PreCheckoutQuery)
+	}
+	if upd.Message != nil && (upd.Message.SuccessfulPayment != nil || upd.Message.RefundedPayment != nil) {
+		return r.paymentReceipt(ctx, upd.Message)
+	}
 	if r.app.Updates != nil {
 		claimed, err := r.app.Updates.Claim(ctx, int64(upd.UpdateID))
 		if err != nil {
@@ -192,6 +204,9 @@ func (r *Router) showScreen(ctx context.Context, t uiTarget, s screen) {
 // ---- Message routing ----
 
 func (r *Router) onMessage(ctx context.Context, m *Message) {
+	if m == nil || m.From == nil || m.From.IsBot {
+		return
+	}
 	tgc, err := r.buildCtxFromMessage(ctx, m)
 	if err != nil {
 		r.log.Warn("message ctx build failed", logx.Any("err", err))
@@ -200,6 +215,12 @@ func (r *Router) onMessage(ctx context.Context, m *Message) {
 
 	cmd, args := parseCommandForBot(m.Text, r.botUsername)
 	if cmd == "" {
+		if r.tryConsumeSupportAmount(ctx, tgc, m) {
+			return
+		}
+		if tgc.chatType != "private" && r.tryCatFollowup(ctx, tgc, m) {
+			return
+		}
 		r.tryConsumePendingCatName(ctx, tgc, m)
 		return
 	}
@@ -218,9 +239,44 @@ func (r *Router) onMessage(ctx context.Context, m *Message) {
 	r.handleYardCommand(ctx, tgc, cmd, m)
 }
 
+func (r *Router) tryCatFollowup(ctx context.Context, tgc *tgCtx, message *Message) bool {
+	if r.app.CatFollowup == nil || message == nil || message.ReplyToMessage == nil {
+		return false
+	}
+	humanReply := strings.TrimSpace(message.Text)
+	if humanReply == "" || strings.HasPrefix(humanReply, "/") {
+		return false
+	}
+	source := message.ReplyToMessage
+	result, matched, err := r.app.CatFollowup.Reply(
+		ctx, tgc.userID, tgc.chatID, source.MessageID, message.MessageID,
+		source.Text, humanReply,
+	)
+	if !matched {
+		if err != nil {
+			r.log.Warn("cat followup reference claim failed", logx.Int64("chat_id", tgc.chatID), logx.Any("err", err))
+		}
+		return false
+	}
+	if err != nil {
+		if !errors.Is(err, domain.ErrAIRateLimited) {
+			r.log.Warn("cat followup generation failed", logx.Int64("chat_id", tgc.chatID), logx.Any("err", err))
+		}
+		return true
+	}
+	if result == nil || result.Cat == nil || strings.TrimSpace(result.Generation.Text) == "" {
+		return true
+	}
+	line := publicCatBadge(result.Cat.Breed, result.Cat.Level) + " " + result.Cat.Name + ": " + strings.TrimSpace(result.Generation.Text)
+	if _, err := r.send.TextReplyResult(ctx, tgc.chatID, message.MessageID, line); err != nil {
+		r.log.Warn("cat followup send failed", logx.Int64("chat_id", tgc.chatID), logx.Any("err", err))
+	}
+	return true
+}
+
 func isPersonalCommand(cmd string) bool {
 	switch cmd {
-	case "/start", "/menu", "/home", "/profile", "/train", "/hunt", "/name", "/reset", "/askcat", "/cat", "/autospeak", "/humor", "/skip":
+	case "/start", "/menu", "/home", "/profile", "/train", "/hunt", "/name", "/reset", "/askcat", "/cat", "/autospeak", "/humor", "/skip", "/support", "/terms", "/paysupport":
 		return true
 	default:
 		return false
@@ -228,7 +284,7 @@ func isPersonalCommand(cmd string) bool {
 }
 
 func isAdminCommand(cmd string) bool {
-	return cmd == "/yardsettings" || cmd == "/quiet"
+	return cmd == "/yardsettings" || cmd == "/quiet" || cmd == "/eventstart"
 }
 
 func (r *Router) handlePersonalCommand(ctx context.Context, tgc *tgCtx, cmd, args string, message *Message) {
@@ -245,6 +301,16 @@ func (r *Router) handlePersonalCommand(ctx context.Context, tgc *tgCtx, cmd, arg
 		return
 	}
 	switch cmd {
+	case "/support":
+		if strings.TrimSpace(args) == "" {
+			r.showSupport(ctx, tgc)
+		} else {
+			r.chooseSupportAmount(ctx, tgc, args)
+		}
+	case "/terms":
+		r.sendText(ctx, tgc.chatID, r.termsText())
+	case "/paysupport":
+		r.showPaySupport(ctx, tgc)
 	case "/start", "/menu", "/home":
 		r.app.RecordUserStarted(ctx, tgc.userID, tgc.tgID, tgc.chatType)
 		r.renderStart(ctx, tgc, message)
@@ -273,7 +339,7 @@ func (r *Router) handlePersonalCommand(ctx context.Context, tgc *tgCtx, cmd, arg
 
 func personalCommandIsPrivate(cmd string) bool {
 	switch cmd {
-	case "/start", "/menu", "/home", "/profile", "/name", "/reset", "/autospeak", "/humor", "/skip":
+	case "/start", "/menu", "/home", "/profile", "/name", "/reset", "/autospeak", "/humor", "/skip", "/support", "/terms", "/paysupport":
 		return true
 	default:
 		return false
@@ -295,7 +361,18 @@ func (r *Router) renderPublicProfile(ctx context.Context, tgc *tgCtx) {
 		r.openPrivatePersonalUI(ctx, tgc)
 		return
 	}
-	r.sendPhotoKB(ctx, tgc.chatID, views.CatAvatarURL(r.publicBaseURL, cat), views.FormatCatProfile(cat, tgc.now), nil)
+	allowed, err := r.app.Users.ClaimDailyCommand(ctx, tgc.userID, tgc.chatID, "profile", app.GameTime(tgc.now))
+	if err != nil {
+		r.log.Warn("group profile quota failed", logx.Any("err", err))
+		r.sendText(ctx, tgc.chatID, contentText("profile.group.error"))
+		return
+	}
+	if !allowed {
+		r.sendTextKB(ctx, tgc.chatID, contentText("profile.group.daily_limit"), views.OpenPrivateKeyboard(r.botUsername))
+		return
+	}
+	arena, _ := r.app.Profile.ArenaStats(ctx, cat.ID)
+	r.sendPhotoKB(ctx, tgc.chatID, views.CatAvatarURL(r.publicBaseURL, cat), views.FormatCatProfileWithArena(cat, tgc.now, arena), nil)
 }
 
 func (r *Router) handleYardCommand(ctx context.Context, tgc *tgCtx, cmd string, message *Message) {
@@ -321,6 +398,8 @@ func (r *Router) handleAdminCommand(ctx context.Context, tgc *tgCtx, cmd, args s
 		r.configureYard(ctx, tgc, args)
 	case "/quiet":
 		r.configureQuiet(ctx, tgc, args)
+	case "/eventstart":
+		r.startYardEventAdmin(ctx, tgc)
 	}
 }
 
@@ -339,7 +418,7 @@ func yardSettingsFrom(yard *domain.Yard) domain.YardSettings {
 	return domain.YardSettings{
 		HumorMode: yard.HumorMode, AutoMessagesEnabled: yard.AutoMessagesEnabled,
 		MaxAutoMessagesDay: yard.MaxAutoMessagesDay, CatToCatBanter: yard.CatToCatBanter,
-		QuietUntil: yard.QuietUntil,
+		FightsEnabled: yard.FightsEnabled, QuietUntil: yard.QuietUntil,
 	}
 }
 
@@ -349,7 +428,7 @@ func (r *Router) configureYard(ctx context.Context, tgc *tgCtx, args string) {
 	}
 	yard, err := r.app.Yard.Settings(ctx, tgc.chatID)
 	if err != nil {
-		r.sendText(ctx, tgc.chatID, "Сначала создай Двор командой /yard.")
+		r.sendText(ctx, tgc.chatID, contentText("yard.settings.error.no_yard"))
 		return
 	}
 	args = strings.ToLower(strings.TrimSpace(args))
@@ -378,6 +457,13 @@ func (r *Router) configureYard(ctx context.Context, tgc *tgCtx, args string) {
 			return
 		}
 		settings.CatToCatBanter = value
+	case "fights":
+		value, ok := parseOnOff(parts[1])
+		if !ok {
+			r.sendText(ctx, tgc.chatID, yardSettingsUsage())
+			return
+		}
+		settings.FightsEnabled = value
 	case "limit":
 		value, convErr := strconv.Atoi(parts[1])
 		if convErr != nil || value < 0 || value > 2 {
@@ -398,10 +484,10 @@ func (r *Router) configureYard(ctx context.Context, tgc *tgCtx, args string) {
 	}
 	updated, err := r.app.Yard.SaveSettings(ctx, tgc.chatID, settings)
 	if err != nil {
-		r.sendText(ctx, tgc.chatID, "Не удалось сохранить настройки Двора.")
+		r.sendText(ctx, tgc.chatID, contentText("yard.settings.error.save"))
 		return
 	}
-	r.sendText(ctx, tgc.chatID, "✅ Настройки обновлены.\n\n"+formatYardSettings(updated, tgc.now))
+	r.sendText(ctx, tgc.chatID, contentText("yard.settings.updated")+"\n\n"+formatYardSettings(updated, tgc.now))
 }
 
 func (r *Router) configureQuiet(ctx context.Context, tgc *tgCtx, args string) {
@@ -410,7 +496,7 @@ func (r *Router) configureQuiet(ctx context.Context, tgc *tgCtx, args string) {
 	}
 	yard, err := r.app.Yard.Settings(ctx, tgc.chatID)
 	if err != nil {
-		r.sendText(ctx, tgc.chatID, "Сначала создай Двор командой /yard.")
+		r.sendText(ctx, tgc.chatID, contentText("yard.settings.error.no_yard"))
 		return
 	}
 	value := strings.ToLower(strings.TrimSpace(args))
@@ -425,15 +511,15 @@ func (r *Router) configureQuiet(ctx context.Context, tgc *tgCtx, args string) {
 	case "off":
 		settings.QuietUntil = time.Time{}
 	default:
-		r.sendText(ctx, tgc.chatID, "Использование: /quiet 24h, /quiet off или /quiet status")
+		r.sendText(ctx, tgc.chatID, contentText("yard.settings.quiet.usage"))
 		return
 	}
 	updated, err := r.app.Yard.SaveSettings(ctx, tgc.chatID, settings)
 	if err != nil {
-		r.sendText(ctx, tgc.chatID, "Не удалось изменить режим тишины.")
+		r.sendText(ctx, tgc.chatID, contentText("yard.settings.error.quiet"))
 		return
 	}
-	r.sendText(ctx, tgc.chatID, "✅ "+formatYardSettings(updated, tgc.now))
+	r.sendText(ctx, tgc.chatID, contentText("yard.settings.updated")+"\n\n"+formatYardSettings(updated, tgc.now))
 }
 
 func (r *Router) configureCatAutoSpeak(ctx context.Context, tgc *tgCtx, args string) {
@@ -444,18 +530,10 @@ func (r *Router) configureCatAutoSpeak(ctx context.Context, tgc *tgCtx, args str
 	}
 	value := strings.ToLower(strings.TrimSpace(args))
 	if value == "" || value == "status" {
-		personality, getErr := r.app.Personality.Get(ctx, cat.ID)
-		if getErr != nil {
-			r.sendText(ctx, tgc.chatID, "Не удалось получить настройку кота.")
-			return
-		}
-		status := "off"
-		if personality.AutoSpeakEnabled {
-			status = "on"
-		}
-		r.sendText(ctx, tgc.chatID, "Автономные реплики "+cat.Name+": "+status+"\nИзменить: /autospeak on или /autospeak off")
+		r.renderProfileTo(ctx, tgc.userID, tgc.now, uiTarget{chatID: tgc.chatID})
 		return
 	}
+
 	enabled, ok := parseOnOff(value)
 	if !ok {
 		r.sendText(ctx, tgc.chatID, "Использование: /autospeak on или /autospeak off")
@@ -465,17 +543,17 @@ func (r *Router) configureCatAutoSpeak(ctx context.Context, tgc *tgCtx, args str
 		r.sendText(ctx, tgc.chatID, "Не удалось изменить настройку кота.")
 		return
 	}
-	r.sendText(ctx, tgc.chatID, "✅ Автономные реплики "+cat.Name+": "+value)
+	r.renderProfileTo(ctx, tgc.userID, tgc.now, uiTarget{chatID: tgc.chatID})
 }
 
 func (r *Router) requireYardAdmin(ctx context.Context, tgc *tgCtx) bool {
 	admin, err := r.send.IsChatAdmin(ctx, tgc.chatID, tgc.tgID)
 	if err != nil {
-		r.sendText(ctx, tgc.chatID, "Не удалось проверить права администратора.")
+		r.sendText(ctx, tgc.chatID, contentText("yard.settings.error.admin_check"))
 		return false
 	}
 	if !admin {
-		r.sendText(ctx, tgc.chatID, "Эту настройку может менять только администратор группы.")
+		r.sendText(ctx, tgc.chatID, contentText("yard.settings.error.admin_only"))
 	}
 	return admin
 }
@@ -492,23 +570,38 @@ func parseOnOff(value string) (bool, bool) {
 }
 
 func yardSettingsUsage() string {
-	return "Настройки Двора:\n/yardsettings auto on|off\n/yardsettings limit 0|1|2\n/yardsettings banter on|off\n/yardsettings humor normal|bold\n/quiet 24h|off"
+	return contentText("yard.settings.usage")
+}
+
+type yardSettingsTextData struct {
+	YardName string
+	Auto     string
+	Limit    int
+	Banter   string
+	Fights   string
+	Humor    string
+	Quiet    string
 }
 
 func formatYardSettings(yard *domain.Yard, now time.Time) string {
-	auto, banter, quiet := "off", "off", "off"
+	auto, banter, fights, quiet := contentText("yard.settings.value.off"), contentText("yard.settings.value.off"), contentText("yard.settings.value.off"), contentText("yard.settings.value.off")
 	if yard.AutoMessagesEnabled {
-		auto = "on"
+		auto = contentText("yard.settings.value.on")
 	}
 	if yard.CatToCatBanter {
-		banter = "on"
+		banter = contentText("yard.settings.value.on")
+	}
+	if yard.FightsEnabled {
+		fights = contentText("yard.settings.value.on")
 	}
 	if yard.QuietUntil.After(now) {
-		quiet = "до " + yard.QuietUntil.Local().Format("02.01 15:04")
+		quiet = gamecontent.Render("yard.settings.quiet.until", uint64(yard.ID), struct{ Until string }{yard.QuietUntil.Local().Format("02.01 15:04")})
 	}
-	return "⚙️ Двор «" + yard.Name + "»\nАвтономные реплики: " + auto +
-		"\nЛимит: " + strconv.Itoa(yard.MaxAutoMessagesDay) + "/день\nКот-к-коту: " + banter +
-		"\nЮмор: " + string(yard.HumorMode) + "\nТишина: " + quiet
+	status := gamecontent.Render("yard.settings.status", uint64(yard.ID), yardSettingsTextData{
+		YardName: yard.Name, Auto: auto, Limit: yard.MaxAutoMessagesDay,
+		Banter: banter, Fights: fights, Humor: string(yard.HumorMode), Quiet: quiet,
+	})
+	return status + "\n\n" + contentText("yard.settings.controls")
 }
 
 func (r *Router) doRequestedCatReply(ctx context.Context, tgc *tgCtx, message *Message, args string, requireReply bool) {
@@ -534,6 +627,7 @@ func (r *Router) doRequestedCatReply(ctx context.Context, tgc *tgCtx, message *M
 		}
 	}
 
+	r.ensureYardMembership(ctx, tgc, message)
 	cat, generation, err := r.app.CatReply.Reply(
 		ctx, tgc.userID, tgc.chatID,
 		app.CatReplyRequestKey(tgc.chatID, message.MessageID),
@@ -551,8 +645,15 @@ func (r *Router) doRequestedCatReply(ctx context.Context, tgc *tgCtx, message *M
 		return
 	}
 	line := publicCatBadge(cat.Breed, cat.Level) + " " + cat.Name + ": " + generation.Text
-	if err := r.send.TextReply(ctx, tgc.chatID, replyToID, line); err != nil {
+	messageID, err := r.send.TextReplyResult(ctx, tgc.chatID, replyToID, line)
+	if err != nil {
 		r.log.Warn("cat reply send failed", logx.Int64("chat_id", tgc.chatID), logx.Any("err", err))
+		return
+	}
+	if tgc.chatType != "private" && r.app.CatFollowup != nil {
+		if err := r.app.CatFollowup.Remember(ctx, tgc.chatID, messageID, cat.ID); err != nil {
+			r.log.Warn("cat message reference save failed", logx.Int64("chat_id", tgc.chatID), logx.Int("message_id", messageID), logx.Any("err", err))
+		}
 	}
 }
 
@@ -563,16 +664,11 @@ func (r *Router) setHumorMode(ctx context.Context, tgc *tgCtx, args string) {
 		return
 	}
 	value := strings.ToLower(strings.TrimSpace(args))
-	if value == "" {
-		personality, getErr := r.app.Personality.Get(ctx, cat.ID)
-		if getErr != nil {
-			r.sendText(ctx, tgc.chatID, "Не удалось получить режим юмора.")
-			return
-		}
-		value = string(personality.HumorMode)
-		r.sendText(ctx, tgc.chatID, "Режим юмора кота: "+value+"\nИзменить: /humor normal или /humor bold")
+	if value == "" || value == "status" {
+		r.renderProfileTo(ctx, tgc.userID, tgc.now, uiTarget{chatID: tgc.chatID})
 		return
 	}
+
 	mode := domain.HumorMode(value)
 	if !domain.IsValidHumorMode(mode) {
 		r.sendText(ctx, tgc.chatID, "Использование: /humor normal или /humor bold")
@@ -582,11 +678,7 @@ func (r *Router) setHumorMode(ctx context.Context, tgc *tgCtx, args string) {
 		r.sendText(ctx, tgc.chatID, "Не удалось изменить режим юмора.")
 		return
 	}
-	if mode == domain.HumorBold {
-		r.sendText(ctx, tgc.chatID, "Режим кота: bold 😼 Подколы станут дерзче, но ограничения безопасности останутся.")
-		return
-	}
-	r.sendText(ctx, tgc.chatID, "Режим кота: normal 😺")
+	r.renderProfileTo(ctx, tgc.userID, tgc.now, uiTarget{chatID: tgc.chatID})
 }
 
 func (r *Router) enterYard(ctx context.Context, tgc *tgCtx, message *Message) {
@@ -603,37 +695,7 @@ func (r *Router) enterYard(ctx context.Context, tgc *tgCtx, message *Message) {
 		r.sendText(ctx, tgc.chatID, "Не удалось открыть Двор. Попробуй позже.")
 		return
 	}
-	var text strings.Builder
-	text.WriteString("🏘 Двор «" + snapshot.Yard.Name + "»\n")
-	if snapshot.Created {
-		text.WriteString("Двор создан. ")
-	}
-	if snapshot.Joined {
-		text.WriteString("Твой кот присоединился.\n")
-	} else {
-		text.WriteString("Твой кот уже здесь.\n")
-	}
-	text.WriteString("\nКоты двора:\n")
-	for i, member := range snapshot.Members {
-		if i >= 30 {
-			text.WriteString("…и ещё " + strconv.Itoa(len(snapshot.Members)-i))
-			break
-		}
-		text.WriteString(publicCatBadge(member.Breed, member.Level) + " " + member.CatName + " — " + views.TraitRU(member.Trait) + "\n")
-	}
-	if len(snapshot.Relationships) > 0 {
-		text.WriteString("\nСвязи двора:\n")
-		for i, relationship := range snapshot.Relationships {
-			if i >= 5 {
-				break
-			}
-			text.WriteString(relationship.CatAName + " ↔ " + relationship.CatBName +
-				" · 🤝 " + strconv.Itoa(relationship.Friendship) +
-				" · ⚔️ " + strconv.Itoa(relationship.Rivalry) +
-				" · 🏅 " + strconv.Itoa(relationship.Respect) + "\n")
-		}
-	}
-	r.sendText(ctx, tgc.chatID, strings.TrimSpace(text.String()))
+	r.sendText(ctx, tgc.chatID, formatYardSnapshot(snapshot))
 }
 
 func (r *Router) showYardEvent(ctx context.Context, tgc *tgCtx) {
@@ -641,16 +703,44 @@ func (r *Router) showYardEvent(ctx context.Context, tgc *tgCtx) {
 		r.sendText(ctx, tgc.chatID, "Событие Двора открывается только в группе.")
 		return
 	}
-	status, err := r.app.YardEvent.StartOrGet(ctx, tgc.chatID)
-	if err != nil {
-		if errors.Is(err, domain.ErrNoYard) {
-			r.sendText(ctx, tgc.chatID, "Сначала создай Двор командой /yard.")
+	if _, err := r.app.Yard.Enter(ctx, tgc.chatID, tgc.chatName, tgc.userID); err != nil {
+		if errors.Is(err, domain.ErrNoCat) {
+			r.openPrivatePersonalUI(ctx, tgc)
 			return
 		}
-		r.sendText(ctx, tgc.chatID, "Не удалось открыть событие Двора. Попробуй позже.")
+		r.sendText(ctx, tgc.chatID, contentText("yard_event.error.unavailable"))
 		return
 	}
-	r.sendTextKB(ctx, tgc.chatID, formatYardEvent(status), YardEventKeyboard(status.Event.ID, status.Counts))
+	status, err := r.app.YardEvent.GetActive(ctx, tgc.chatID)
+	if err != nil {
+		if errors.Is(err, domain.ErrYardEventUnavailable) {
+			r.sendText(ctx, tgc.chatID, contentText("yard_event.none"))
+			return
+		}
+		r.sendText(ctx, tgc.chatID, contentText("yard_event.error.unavailable"))
+		return
+	}
+	r.sendTextKB(ctx, tgc.chatID, formatYardEvent(status, tgc.now), YardEventKeyboard(status.Event.ID, status.Event.Type))
+}
+
+func (r *Router) startYardEventAdmin(ctx context.Context, tgc *tgCtx) {
+	if !r.requireYardAdmin(ctx, tgc) {
+		return
+	}
+	if _, err := r.app.Yard.Enter(ctx, tgc.chatID, tgc.chatName, tgc.userID); err != nil {
+		if errors.Is(err, domain.ErrNoCat) {
+			r.openPrivatePersonalUI(ctx, tgc)
+			return
+		}
+		r.sendText(ctx, tgc.chatID, contentText("yard_event.error.unavailable"))
+		return
+	}
+	status, err := r.app.YardEvent.StartOrGet(ctx, tgc.chatID)
+	if err != nil {
+		r.sendText(ctx, tgc.chatID, contentText("yard_event.error.unavailable"))
+		return
+	}
+	r.sendTextKB(ctx, tgc.chatID, formatYardEvent(status, tgc.now), YardEventKeyboard(status.Event.ID, status.Event.Type))
 }
 
 func (r *Router) showYardWeeklySummary(ctx context.Context, tgc *tgCtx, message *Message) {
@@ -672,54 +762,93 @@ func (r *Router) showYardWeeklySummary(ctx context.Context, tgc *tgCtx, message 
 	r.sendText(ctx, tgc.chatID, views.FormatYardWeeklySummary(result))
 }
 
-func (r *Router) chooseYardEvent(ctx context.Context, cbc *cbCtx) {
+func (r *Router) chooseYardEvent(ctx context.Context, cbc *cbCtx, callbackID string) {
 	parts := strings.SplitN(strings.TrimPrefix(cbc.data, CBYardChoicePrefix), ":", 2)
 	if len(parts) != 2 {
-		r.sendText(ctx, cbc.chatID, "Некорректный выбор события.")
+		_ = r.send.AnswerCallbackText(ctx, callbackID, contentText("yard_event.choice.error.invalid"))
 		return
 	}
 	eventID, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil || eventID <= 0 {
-		r.sendText(ctx, cbc.chatID, "Некорректный номер события.")
+		_ = r.send.AnswerCallbackText(ctx, callbackID, contentText("yard_event.choice.error.invalid"))
 		return
 	}
 	choice := domain.YardEventChoiceID(parts[1])
 	status, err := r.app.YardEvent.Choose(ctx, cbc.chatID, eventID, cbc.userID, choice)
 	if err != nil {
 		switch {
+		case errors.Is(err, domain.ErrFeatureLocked):
+			_ = r.send.AnswerCallbackText(ctx, callbackID, strings.TrimPrefix(err.Error(), domain.ErrFeatureLocked.Error()+": "))
 		case errors.Is(err, domain.ErrInvalidYardChoice):
-			r.sendText(ctx, cbc.chatID, "Такого варианта нет.")
+			_ = r.send.AnswerCallbackText(ctx, callbackID, contentText("yard_event.choice.error.invalid"))
 		case errors.Is(err, domain.ErrYardEventUnavailable):
-			r.sendText(ctx, cbc.chatID, "Выбор уже закрыт или твой кот ещё не вступил во Двор через /yard.")
+			_ = r.send.AnswerCallbackText(ctx, callbackID, contentText("yard_event.choice.error.unavailable"))
 		default:
-			r.sendText(ctx, cbc.chatID, "Не удалось сохранить выбор. Попробуй позже.")
+			_ = r.send.AnswerCallbackText(ctx, callbackID, contentText("yard_event.choice.error.failed"))
 		}
 		return
 	}
-	r.editTextKB(ctx, cbc.chatID, cbc.msgID, formatYardEvent(status), YardEventKeyboard(eventID, status.Counts))
+	if action, ok := domain.SpecialActionByID(string(choice)); ok {
+		_ = r.send.AnswerCallbackText(ctx, callbackID, "Выбрано: "+action.Label)
+	} else {
+		_ = r.send.AnswerCallbackText(ctx, callbackID, gamecontent.Render(yardEventContentKey(status.Event.Type, "choice.saved."+string(choice)), uint64(cbc.userID), nil))
+	}
+	r.editTextKB(ctx, cbc.chatID, cbc.msgID, formatYardEvent(status, cbc.now), YardEventKeyboard(eventID, status.Event.Type))
 }
 
-func formatYardEvent(status app.YardEventStatus) string {
+type yardEventCardData struct {
+	Total     int
+	Remaining string
+}
+
+func formatYardEvent(status app.YardEventStatus, now time.Time) string {
 	steal := status.Counts[domain.YardChoiceSteal]
 	distract := status.Counts[domain.YardChoiceDistract]
 	scout := status.Counts[domain.YardChoiceScout]
 	total := steal + distract + scout
-	text := "🐟 Событие Двора: «Машина с рыбой»\n\n" +
-		"Возле магазина перевернулась машина с рыбой. Пока продавец считает ящики, коты решают, что делать.\n\n" +
-		"😼 Украсть — ставка на ATK и SPD\n" +
-		"🐈 Отвлечь продавца — ставка на HP и DEF\n" +
-		"🔎 Разведать — ставка на SPD и шанс скрытой находки\n\n" +
-		"Выбрали: " + strconv.Itoa(total) +
-		" · украсть " + strconv.Itoa(steal) +
-		" · отвлечь " + strconv.Itoa(distract) +
-		" · разведать " + strconv.Itoa(scout)
+	selector := uint64(0)
+	eventType := domain.YardEventFishTruck
+	if status.Event != nil {
+		selector = uint64(status.Event.Seed)
+		eventType = status.Event.Type
+	}
+	data := yardEventCardData{Total: total}
+	parts := []string{
+		gamecontent.Render(yardEventContentKey(eventType, "card.title"), selector, data),
+		gamecontent.Render(yardEventContentKey(eventType, "card.scene"), selector, data),
+		gamecontent.Render(yardEventContentKey(eventType, "card.rules"), selector, data),
+		gamecontent.Render(yardEventContentKey(eventType, "card.reward"), selector, data),
+		gamecontent.Render("yard_event.card.progress", selector, data),
+	}
 	if status.Event != nil && !status.Event.ResolvesAt.IsZero() {
-		remaining := status.Event.ResolvesAt.Sub(time.Now()).Round(time.Minute)
+		remaining := status.Event.ResolvesAt.Sub(now)
 		if remaining > 0 {
-			text += "\nВыбор открыт ещё примерно " + remaining.String() + "."
+			data.Remaining = formatYardEventDuration(remaining)
+			parts = append(parts, gamecontent.Render("yard_event.card.remaining", selector, data))
 		}
 	}
-	return text
+	if status.Event != nil {
+		if action, ok := domain.FeaturedSpecial(eventType, status.Event.ID); ok {
+			parts = append(parts, "✨ "+action.Label+". Нужно: "+action.Requirement)
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func formatYardEventDuration(duration time.Duration) string {
+	minutes := int(duration.Round(time.Minute) / time.Minute)
+	if minutes < 1 {
+		return "меньше минуты"
+	}
+	if minutes < 60 {
+		return strconv.Itoa(minutes) + " мин"
+	}
+	hours := minutes / 60
+	minutes %= 60
+	if minutes == 0 {
+		return strconv.Itoa(hours) + " ч"
+	}
+	return strconv.Itoa(hours) + " ч " + strconv.Itoa(minutes) + " мин"
 }
 
 // ---- Callback routing ----
@@ -734,8 +863,7 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 		return
 	}
 	if strings.HasPrefix(cbc.data, CBYardChoicePrefix) {
-		_ = r.send.AnswerCallback(ctx, cq.ID)
-		r.chooseYardEvent(ctx, cbc)
+		r.chooseYardEvent(ctx, cbc, cq.ID)
 		return
 	}
 	if ownerUserID, action, personal := ParsePersonalCallback(cbc.data); personal {
@@ -748,6 +876,10 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 			return
 		}
 		cbc.data = action
+		if strings.HasPrefix(cbc.data, CBFightRevengePrefix) {
+			r.revengeFight(ctx, cbc, cq.ID)
+			return
+		}
 		_ = r.send.AnswerCallback(ctx, cq.ID)
 	} else {
 		// Compatibility for private cards sent before owner-bound callbacks were
@@ -757,6 +889,23 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 			return
 		}
 		_ = r.send.AnswerCallback(ctx, cq.ID)
+	}
+	if legacyCallbackDisabled(cbc.data) {
+		key := "feature.disabled.items"
+		if strings.HasPrefix(cbc.data, CBExpeditionChoosePrefix) || strings.HasPrefix(cbc.data, CBExpeditionDoPrefix) || cbc.data == CBMenuExp || cbc.data == CBExpeditionRefresh {
+			key = "feature.disabled.legacy_expedition"
+		}
+		r.sendText(ctx, cbc.chatID, contentText(key))
+		return
+	}
+
+	if strings.HasPrefix(cbc.data, "support:") {
+		r.supportCallback(ctx, cbc, cq.ID)
+		return
+	}
+	if strings.HasPrefix(cbc.data, "pref:") {
+		r.changePreference(ctx, cbc)
+		return
 	}
 
 	// starter:* handled separately (prefix routing)
@@ -824,9 +973,9 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 	case CBMenuAskCat:
 		r.sendText(ctx, cbc.chatID, contentText("help.askcat"))
 	case CBProfileAutoSpeak:
-		r.configureCatAutoSpeak(ctx, &cbc.tgCtx, "status")
+		r.changePreference(ctx, cbc)
 	case CBProfileHumor:
-		r.setHumorMode(ctx, &cbc.tgCtx, "")
+		r.changePreference(ctx, cbc)
 	case CBMenuPVP:
 		r.renderArena(ctx, cbc)
 	case CBNoop:
@@ -836,7 +985,17 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 	}
 }
 
+func legacyCallbackDisabled(action string) bool {
+	return strings.HasPrefix(action, CBExpeditionChoosePrefix) || strings.HasPrefix(action, CBExpeditionDoPrefix) ||
+		strings.HasPrefix(action, CBCollectionUpgradePrefix) ||
+		action == CBMenuExp || action == CBExpeditionRefresh ||
+		action == CBBestiary
+}
+
 func personalCallbackIsPrivate(action string) bool {
+	if strings.HasPrefix(action, CBFightRevengePrefix) {
+		return false
+	}
 	switch action {
 	case CBTrainDo, CBMenuYard, CBMenuFight, CBMenuAskCat, CBNoop:
 		return false
@@ -875,7 +1034,7 @@ func (r *Router) doTrainCommand(ctx context.Context, tgc *tgCtx) {
 		return
 	}
 	if tgc.chatType == "private" {
-		r.sendText(ctx, tgc.chatID, views.FormatTrainingResultText(cat, result, generation.Text))
+		r.sendText(ctx, tgc.chatID, views.FormatTrainingResultText(cat, result, generation.Text, r.app.Clock.Now()))
 	}
 }
 
@@ -968,16 +1127,39 @@ func (r *Router) renderProfileTo(ctx context.Context, userID int64, now time.Tim
 		r.showScreen(ctx, t, s)
 		return
 	}
+	arena, _ := r.app.Profile.ArenaStats(ctx, cat.ID)
+	entries, _ := r.app.Collection.List(ctx, userID)
+	caption := views.FormatCatProfileWithArena(cat, now, arena)
+	var personality *domain.CatPersonality
+	if r.app.Personality != nil {
+		personality, _ = r.app.Personality.Get(ctx, cat.ID)
+	}
+	kb := ProfileKeyboard(userID, personality)
+	if cat.Level >= 2 && len(entries) > 0 {
+		caption += "\n\n🎒 Снаряжение"
+		for _, entry := range entries {
+			if entry.Owned.Equipped && domain.SlotUnlocked(entry.Definition.Slot, cat.Level) {
+				caption += "\n" + entry.Definition.Name + " · Lv" + strconv.Itoa(entry.Owned.Level)
+			}
+		}
+		rows := kb["inline_keyboard"].([][]map[string]any)
+		kb["inline_keyboard"] = append(rows, []map[string]any{{"text": "🎒 Предметы", "callback_data": PersonalCallback(userID, CBCollection)}})
+	}
 	s := screen{
 		photoURL: views.CatAvatarURL(r.publicBaseURL, cat),
-		caption:  views.FormatCatProfile(cat, now),
-		kb:       ProfileKeyboard(userID),
+		caption:  caption,
+		kb:       kb,
 	}
 	r.showScreen(ctx, t, s)
 
 }
 
 func (r *Router) renderCollectionTo(ctx context.Context, userID int64, t uiTarget) {
+	cat, err := r.app.Profile.GetCat(ctx, userID)
+	if err != nil || cat.Level < 2 {
+		r.sendText(ctx, t.chatID, "🔒 Первый предмет откроется на Lv2.")
+		return
+	}
 	entries, err := r.app.Collection.List(ctx, userID)
 	if err != nil {
 		r.showScreen(ctx, t, screen{photoURL: r.photoForUser(ctx, userID), caption: "Не удалось открыть коллекцию. Попробуй позже.", kb: ProfileKeyboard(userID)})
@@ -996,6 +1178,11 @@ func (r *Router) renderBestiaryTo(ctx context.Context, userID int64, t uiTarget)
 }
 
 func (r *Router) renderCollectionItem(ctx context.Context, userID int64, itemID string, t uiTarget, prefix string) {
+	cat, err := r.app.Profile.GetCat(ctx, userID)
+	if err != nil || cat.Level < 2 {
+		r.renderCollectionTo(ctx, userID, t)
+		return
+	}
 	entries, err := r.app.Collection.List(ctx, userID)
 	if err != nil {
 		r.renderCollectionTo(ctx, userID, t)
@@ -1003,7 +1190,11 @@ func (r *Router) renderCollectionItem(ctx context.Context, userID int64, itemID 
 	}
 	for _, entry := range entries {
 		if entry.Definition.ID == itemID {
-			r.showScreen(ctx, t, screen{photoURL: r.photoForUser(ctx, userID), caption: views.FormatItem(entry, prefix), kb: CollectionItemKeyboard(entry)})
+			caption := views.FormatItem(entry, prefix)
+			if !domain.SlotUnlocked(entry.Definition.Slot, cat.Level) {
+				caption += "\n🔒 Этот слот откроется на Lv" + strconv.Itoa(domain.EquipmentSlotLevel(entry.Definition.Slot)) + "."
+			}
+			r.showScreen(ctx, t, screen{photoURL: views.ItemImageURL(entry.Definition.ID), caption: caption, kb: CollectionItemKeyboard(entry, cat.Level)})
 			return
 		}
 	}
@@ -1015,7 +1206,7 @@ func (r *Router) equipCollectionItem(ctx context.Context, cbc *cbCtx, itemID str
 		r.renderCollectionItem(ctx, cbc.userID, itemID, targetFromCB(cbc), "Не удалось надеть предмет.")
 		return
 	}
-	r.renderCollectionItem(ctx, cbc.userID, itemID, targetFromCB(cbc), "✅ Предмет надет — бонус уже действует в экспедициях.")
+	r.renderCollectionItem(ctx, cbc.userID, itemID, targetFromCB(cbc), "✅ Предмет надет — его бонусы действуют.")
 }
 
 func (r *Router) upgradeCollectionItem(ctx context.Context, cbc *cbCtx, itemID string) {
@@ -1198,7 +1389,7 @@ func (r *Router) doTrainCallback(ctx context.Context, cbc *cbCtx) {
 		return
 	}
 
-	head := views.FormatTrainingResultText(cat, res, generation.Text)
+	head := views.FormatTrainingResultText(cat, res, generation.Text, r.app.Clock.Now())
 	r.renderTrainingTo(ctx, cbc.userID, r.app.Clock.Now(), targetFromCB(cbc), head)
 }
 
@@ -1344,7 +1535,7 @@ func (r *Router) buildHomeOrStarterScreen(ctx context.Context, userID int64) scr
 			caption: views.BreedIcon(cat.Breed) + " " + cat.Name + "\n" +
 				"Lv." + strconv.Itoa(cat.Level) + " • " + views.TraitRU(cat.Trait) + "\n" +
 				"⚡ " + strconv.Itoa(energy) + "/100",
-			kb: MainMenuKeyboard(userID),
+			kb: MainMenuKeyboard(userID, cat.Level),
 		}
 	}
 	return screen{

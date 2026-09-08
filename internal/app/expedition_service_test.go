@@ -41,14 +41,14 @@ func TestExpeditionServiceResolvesAndPersistsLoot(t *testing.T) {
 	now := time.Unix(123, 0)
 	cats := &retryCats{stubCats: stubCats{cat: &domain.Cat{Level: 1, Energy: 100, EnergyUpdatedAt: now}}, versions: []int64{4}}
 	engine := &expeditionEngine{loot: domain.LootRoll{Dropped: true, Rarity: domain.ItemCommon, ItemIndex: 0}}
-	items := &fakeItems{saveItem: domain.OwnedItem{ItemID: "rat_tooth", Level: 1}, saveIsNew: true}
+	items := &fakeItems{saveItem: domain.OwnedItem{ItemID: "string_collar", Level: 1}, saveIsNew: true}
 	svc := NewExpeditionService(cats, items, engine, fakeClock{t: now}, zeroRNG{}, nil)
 
 	_, result, err := svc.Explore(context.Background(), 7, domain.ExpeditionAlley, domain.ExpeditionEasy)
 	if err != nil {
 		t.Fatalf("Explore() error = %v", err)
 	}
-	if items.savedItemID != "rat_tooth" || result.Loot.ItemID != "rat_tooth" || !result.Loot.New {
+	if items.savedItemID != "string_collar" || result.Loot.ItemID != "string_collar" || !result.Loot.New {
 		t.Fatalf("loot was not resolved/persisted: saved=%q result=%+v", items.savedItemID, result.Loot)
 	}
 	if !engine.input.ForceLoot || engine.input.LootCounts.Common == 0 {

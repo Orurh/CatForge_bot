@@ -10,6 +10,16 @@ namespace catforge::engine {
 namespace pb = catforge::gameengine::v1;
 namespace {
 
+FelineStats FromProto(const pb::FelineStats &s) {
+  return {s.claws_tenth_mm(), s.weight_grams(), s.tail_mm(),
+          s.whisker_span_mm()};
+}
+void ToProto(const FelineStats &s, pb::FelineStats *p) {
+  p->set_claws_tenth_mm(s.claws_tenth_mm);
+  p->set_weight_grams(s.weight_grams);
+  p->set_tail_mm(s.tail_mm);
+  p->set_whisker_span_mm(s.whisker_span_mm);
+}
 CatState FromProto(const pb::CatState &value) {
   CatState cat{
       .id = value.id(),
@@ -26,6 +36,8 @@ CatState FromProto(const pb::CatState &value) {
       .atk_base = value.atk_base(),
       .def_base = value.def_base(),
       .spd_base = value.spd_base(),
+      .feline = FromProto(value.feline()),
+      .first_item_granted = value.first_item_granted(),
   };
   if (value.has_last_train_at_unix_nanos()) {
     cat.last_train_at_unix_nanos = value.last_train_at_unix_nanos();
@@ -57,6 +69,8 @@ void ToProto(const CatState &cat, pb::CatState *value) {
   value->set_atk_base(cat.atk_base);
   value->set_def_base(cat.def_base);
   value->set_spd_base(cat.spd_base);
+  ToProto(cat.feline, value->mutable_feline());
+  value->set_first_item_granted(cat.first_item_granted);
 }
 
 pb::Encounter ToProto(const Encounter encounter) {
@@ -76,6 +90,9 @@ pb::Encounter ToProto(const Encounter encounter) {
 }
 
 void ToProto(const TrainResult &result, pb::TrainResult *value) {
+  value->set_loot_item_id(result.loot_item_id);
+  for (const auto &fact : result.progression_facts)
+    value->add_progression_facts(fact);
   value->set_outcome(result.outcome == TrainingOutcome::kOk
                          ? pb::TRAINING_OUTCOME_OK
                          : pb::TRAINING_OUTCOME_NOT_ENOUGH_ENERGY);
@@ -227,6 +244,10 @@ YardEventType FromProto(const pb::YardEventType value) {
   switch (value) {
   case pb::YARD_EVENT_TYPE_FISH_TRUCK:
     return YardEventType::kFishTruck;
+  case pb::YARD_EVENT_TYPE_BIG_DOG:
+    return YardEventType::kBigDog;
+  case pb::YARD_EVENT_TYPE_BIG_BOX:
+    return YardEventType::kBigBox;
   default:
     return YardEventType::kUnspecified;
   }
@@ -258,12 +279,28 @@ pb::YardEventChoice ToProto(const YardEventChoice value) {
   }
 }
 
+pb::YardEventOutcomeTier ToProto(const YardEventOutcomeTier value) {
+  switch (value) {
+  case YardEventOutcomeTier::kPartial:
+    return pb::YARD_EVENT_OUTCOME_TIER_PARTIAL;
+  case YardEventOutcomeTier::kSuccess:
+    return pb::YARD_EVENT_OUTCOME_TIER_SUCCESS;
+  case YardEventOutcomeTier::kExceptional:
+    return pb::YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL;
+  default:
+    return pb::YARD_EVENT_OUTCOME_TIER_FAILURE;
+  }
+}
+
 void ToProto(const YardEventResult &result,
              pb::ResolveYardEventResponse *value) {
-  value->set_success(result.success);
+  value->set_success(result.outcome_tier == YardEventOutcomeTier::kSuccess ||
+                     result.outcome_tier == YardEventOutcomeTier::kExceptional);
+  value->set_outcome_tier(ToProto(result.outcome_tier));
   value->set_team_score(result.team_score);
   value->set_target_score(result.target_score);
-  value->set_fish_total(result.fish_total);
+  value->set_yard_score(result.yard_score);
+  value->set_xp_gain(result.xp_gain);
   value->set_secret_found(result.secret_found);
   value->set_strategy_bonus(result.strategy_bonus);
   for (const auto &participant : result.participants) {
@@ -271,8 +308,8 @@ void ToProto(const YardEventResult &result,
     target->set_cat_id(participant.cat_id);
     target->set_choice(ToProto(participant.choice));
     target->set_contribution(participant.contribution);
-    target->set_fish_reward(participant.fish_reward);
     target->set_mvp(participant.mvp);
+    target->set_item_effect_triggered(participant.item_effect_triggered);
   }
   for (const auto &effect : result.relationship_effects) {
     auto *target = value->add_relationship_effects();
@@ -303,6 +340,30 @@ void ToProto(const FightResult &result, pb::FightResponse *value) {
 
 } // namespace
 
+grpc::Status GameEngineService::Progress(grpc::ServerContext *,
+                                         const pb::ProgressRequest *request,
+                                         pb::ProgressResponse *response) {
+  try {
+    if (request->rules_version() != kCurrentRulesVersion)
+      throw std::invalid_argument("unsupported rules version");
+    auto output = engine::Progress({.cat = FromProto(request->cat()),
+                                    .xp_gain = request->xp_gain(),
+                                    .seed = request->seed(),
+                                    .source = request->source(),
+                                    .outcome_tier = request->outcome_tier(),
+                                    .secret_found = request->secret_found(),
+                                    .energy_spent = request->energy_spent(),
+                                    .training_loot_roll = request->training_loot_roll()});
+    ToProto(output.cat, response->mutable_cat());
+    response->set_loot_item_id(output.loot_item_id);
+    for (const auto &f : output.facts)
+      response->add_facts(f);
+    return grpc::Status::OK;
+  } catch (const std::exception &e) {
+    return {grpc::StatusCode::INVALID_ARGUMENT, e.what()};
+  }
+}
+
 grpc::Status GameEngineService::Train(grpc::ServerContext *,
                                       const pb::TrainRequest *request,
                                       pb::TrainResponse *response) {
@@ -318,11 +379,14 @@ grpc::Status GameEngineService::Train(grpc::ServerContext *,
         .now_unix_nanos = request->now_unix_nanos(),
         .random =
             {
+                .training_crit_roll = request->random().training_crit_roll(),
                 .energy_cost_roll = request->random().energy_cost_roll(),
                 .xp_gain_roll = request->random().xp_gain_roll(),
                 .encounter_roll = request->random().encounter_roll(),
                 .flavor_roll = request->random().flavor_roll(),
+                .training_loot_roll = request->random().training_loot_roll(),
             },
+        .training_crit_bonus_percent = request->training_crit_bonus_percent(),
     });
     ToProto(output.cat, response->mutable_cat());
     ToProto(output.result, response->mutable_result());
@@ -384,7 +448,11 @@ GameEngineService::ResolveYardEvent(grpc::ServerContext *,
                               .hp = participant.hp(),
                               .atk = participant.atk(),
                               .def = participant.def(),
-                              .spd = participant.spd()});
+                              .spd = participant.spd(),
+                              .feline = FromProto(participant.feline()),
+                              .effects = {participant.effects().begin(),
+                                          participant.effects().end()},
+                              .special_action = participant.special_action()});
     }
     const auto result = engine::ResolveYardEvent(
         {.rules_version = request->rules_version(),

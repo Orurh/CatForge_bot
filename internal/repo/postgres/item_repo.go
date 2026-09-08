@@ -61,6 +61,13 @@ func (r *ItemRepo) Equip(ctx context.Context, userID int64, slot domain.ItemSlot
 		return err
 	}
 	defer tx.Rollback(ctx)
+	var level int
+	if err = tx.QueryRow(ctx, `SELECT level FROM cats WHERE user_id=$1 FOR UPDATE`, userID).Scan(&level); err != nil {
+		return err
+	}
+	if !domain.SlotUnlocked(slot, level) {
+		return domain.ErrFeatureLocked
+	}
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT true FROM cat_items WHERE user_id=$1 AND item_id=$2`, userID, itemID).Scan(&exists); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

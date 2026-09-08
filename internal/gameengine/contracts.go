@@ -10,22 +10,25 @@ import (
 	"catforge/internal/pkg/randx"
 )
 
-const CurrentRulesVersion uint32 = 8
-const CurrentContentVersion uint32 = 2
+const CurrentRulesVersion uint32 = 14
+const CurrentContentVersion uint32 = 5
 
 type TrainingRandom struct {
-	EnergyCostRoll int
-	XPGainRoll     int
-	EncounterRoll  int
-	FlavorRoll     uint16
+	TrainingLootRoll int
+	TrainingCritRoll int
+	EnergyCostRoll   int
+	XPGainRoll       int
+	EncounterRoll    int
+	FlavorRoll       uint16
 }
 
 type TrainingInput struct {
-	RulesVersion   uint32
-	ContentVersion uint32
-	Cat            domain.Cat
-	Now            time.Time
-	Random         TrainingRandom
+	TrainingCritBonusPercent int
+	RulesVersion             uint32
+	ContentVersion           uint32
+	Cat                      domain.Cat
+	Now                      time.Time
+	Random                   TrainingRandom
 }
 
 type TrainingOutput struct {
@@ -83,9 +86,25 @@ type Engine interface {
 
 func RollTraining(rng randx.RNG) TrainingRandom {
 	return TrainingRandom{
-		EnergyCostRoll: rng.Intn(13),
-		XPGainRoll:     rng.Intn(17),
-		EncounterRoll:  rng.Intn(100),
-		FlavorRoll:     uint16(rng.Intn(1 << 16)),
+		TrainingLootRoll: rng.Intn(10000),
+		EnergyCostRoll:   0,
+		TrainingCritRoll: rng.Intn(100),
+		XPGainRoll:       rng.Intn(51),
+		EncounterRoll:    rng.Intn(100),
+		FlavorRoll:       uint16(rng.Intn(1 << 16)),
 	}
+}
+
+type ProgressInput struct {
+	TrainingLootRoll int
+	Cat              domain.Cat
+	XPGain           int64
+	Seed             uint64
+	Source           string
+	OutcomeTier      string
+	SecretFound      bool
+	EnergySpent      int
+}
+type ProgressionEngine interface {
+	Progress(context.Context, ProgressInput) (domain.Cat, error)
 }

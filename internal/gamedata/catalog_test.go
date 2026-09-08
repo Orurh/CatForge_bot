@@ -48,11 +48,11 @@ func TestLootCountsMatchCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if common != 2 || rare != 2 || epic != 0 {
-		t.Fatalf("alley loot counts = %d/%d/%d, want 2/2/0", common, rare, epic)
+	if common != 1 || rare != 3 || epic != 0 {
+		t.Fatalf("alley loot counts = %d/%d/%d, want 1/3/0", common, rare, epic)
 	}
 	candidates, err := LootCandidates(domain.ExpeditionAlley, domain.ItemCommon)
-	if err != nil || len(candidates) != common || candidates[0].ID != "rat_tooth" {
+	if err != nil || len(candidates) != common || candidates[0].ID != "string_collar" {
 		t.Fatalf("unexpected candidates: %+v, err=%v", candidates, err)
 	}
 }

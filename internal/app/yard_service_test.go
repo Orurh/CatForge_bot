@@ -15,6 +15,8 @@ type stubYards struct {
 	created       bool
 	joined        bool
 	err           error
+	claimAllowed  *bool
+	claimedKinds  *[]domain.AutoMessageKind
 }
 
 func (s stubYards) EnsureAndJoin(context.Context, int64, string, int64, int64, time.Time) (*domain.Yard, bool, bool, error) {
@@ -39,11 +41,18 @@ func (s stubYards) SaveSettings(_ context.Context, _ int64, settings domain.Yard
 	yard.AutoMessagesEnabled = settings.AutoMessagesEnabled
 	yard.MaxAutoMessagesDay = settings.MaxAutoMessagesDay
 	yard.CatToCatBanter = settings.CatToCatBanter
+	yard.FightsEnabled = settings.FightsEnabled
 	yard.QuietUntil = settings.QuietUntil
 	yard.UpdatedAt = now
 	return &yard, nil
 }
-func (s stubYards) ClaimAutoMessageSlot(context.Context, int64, time.Time, int) (bool, error) {
+func (s stubYards) ClaimAutoMessageSlot(_ context.Context, _ int64, _ time.Time, _ int, kind domain.AutoMessageKind) (bool, error) {
+	if s.claimedKinds != nil {
+		*s.claimedKinds = append(*s.claimedKinds, kind)
+	}
+	if s.claimAllowed != nil {
+		return *s.claimAllowed, s.err
+	}
 	return true, s.err
 }
 
@@ -84,5 +93,37 @@ func TestYardServiceDoesNotRepublishExistingMembership(t *testing.T) {
 	}
 	if len(events.events) != 0 {
 		t.Fatalf("events = %+v, want none", events.events)
+	}
+}
+
+func TestYardServicePublishesSettingsChange(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(456, 0)
+	yard := &domain.Yard{ID: 9, TelegramChatID: -100, Name: "Друзья"}
+	events := &fakeEvents{}
+	svc := NewYardService(stubYards{yard: yard}, stubCats{}, fakeClock{t: now}, events)
+	settings := domain.YardSettings{
+		AutoMessagesEnabled: true,
+		MaxAutoMessagesDay:  2,
+		CatToCatBanter:      true,
+		FightsEnabled:       false,
+		HumorMode:           domain.HumorBold,
+		QuietUntil:          now.Add(24 * time.Hour),
+	}
+
+	updated, err := svc.SaveSettings(context.Background(), -100, settings)
+	if err != nil {
+		t.Fatalf("SaveSettings() error = %v", err)
+	}
+	if updated.FightsEnabled || updated.HumorMode != domain.HumorBold || updated.MaxAutoMessagesDay != 2 {
+		t.Fatalf("updated yard = %+v", updated)
+	}
+	if len(events.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(events.events))
+	}
+	event := events.events[0]
+	payload, ok := event.Payload.(YardSettingsChangedPayload)
+	if !ok || payload.FightsEnabled || !payload.CatToCatBanter || event.Kind != GameEventYardSettingsChanged || event.YardID != 9 || !event.OccurredAt.Equal(now) {
+		t.Fatalf("unexpected event: %+v", event)
 	}
 }

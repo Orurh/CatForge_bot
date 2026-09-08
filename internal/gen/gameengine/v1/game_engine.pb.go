@@ -439,6 +439,8 @@ type YardEventType int32
 const (
 	YardEventType_YARD_EVENT_TYPE_UNSPECIFIED YardEventType = 0
 	YardEventType_YARD_EVENT_TYPE_FISH_TRUCK  YardEventType = 1
+	YardEventType_YARD_EVENT_TYPE_BIG_DOG     YardEventType = 2
+	YardEventType_YARD_EVENT_TYPE_BIG_BOX     YardEventType = 3
 )
 
 // Enum value maps for YardEventType.
@@ -446,10 +448,14 @@ var (
 	YardEventType_name = map[int32]string{
 		0: "YARD_EVENT_TYPE_UNSPECIFIED",
 		1: "YARD_EVENT_TYPE_FISH_TRUCK",
+		2: "YARD_EVENT_TYPE_BIG_DOG",
+		3: "YARD_EVENT_TYPE_BIG_BOX",
 	}
 	YardEventType_value = map[string]int32{
 		"YARD_EVENT_TYPE_UNSPECIFIED": 0,
 		"YARD_EVENT_TYPE_FISH_TRUCK":  1,
+		"YARD_EVENT_TYPE_BIG_DOG":     2,
+		"YARD_EVENT_TYPE_BIG_BOX":     3,
 	}
 )
 
@@ -532,15 +538,68 @@ func (YardEventChoice) EnumDescriptor() ([]byte, []int) {
 	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{9}
 }
 
+type YardEventOutcomeTier int32
+
+const (
+	YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_FAILURE     YardEventOutcomeTier = 0
+	YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_PARTIAL     YardEventOutcomeTier = 1
+	YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_SUCCESS     YardEventOutcomeTier = 2
+	YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL YardEventOutcomeTier = 3
+)
+
+// Enum value maps for YardEventOutcomeTier.
+var (
+	YardEventOutcomeTier_name = map[int32]string{
+		0: "YARD_EVENT_OUTCOME_TIER_FAILURE",
+		1: "YARD_EVENT_OUTCOME_TIER_PARTIAL",
+		2: "YARD_EVENT_OUTCOME_TIER_SUCCESS",
+		3: "YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL",
+	}
+	YardEventOutcomeTier_value = map[string]int32{
+		"YARD_EVENT_OUTCOME_TIER_FAILURE":     0,
+		"YARD_EVENT_OUTCOME_TIER_PARTIAL":     1,
+		"YARD_EVENT_OUTCOME_TIER_SUCCESS":     2,
+		"YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL": 3,
+	}
+)
+
+func (x YardEventOutcomeTier) Enum() *YardEventOutcomeTier {
+	p := new(YardEventOutcomeTier)
+	*p = x
+	return p
+}
+
+func (x YardEventOutcomeTier) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (YardEventOutcomeTier) Descriptor() protoreflect.EnumDescriptor {
+	return file_gameengine_v1_game_engine_proto_enumTypes[10].Descriptor()
+}
+
+func (YardEventOutcomeTier) Type() protoreflect.EnumType {
+	return &file_gameengine_v1_game_engine_proto_enumTypes[10]
+}
+
+func (x YardEventOutcomeTier) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use YardEventOutcomeTier.Descriptor instead.
+func (YardEventOutcomeTier) EnumDescriptor() ([]byte, []int) {
+	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{10}
+}
+
 type TrainRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	RulesVersion   uint32                 `protobuf:"varint,1,opt,name=rules_version,json=rulesVersion,proto3" json:"rules_version,omitempty"`
-	Cat            *CatState              `protobuf:"bytes,2,opt,name=cat,proto3" json:"cat,omitempty"`
-	NowUnixNanos   int64                  `protobuf:"varint,3,opt,name=now_unix_nanos,json=nowUnixNanos,proto3" json:"now_unix_nanos,omitempty"`
-	Random         *TrainingRandom        `protobuf:"bytes,4,opt,name=random,proto3" json:"random,omitempty"`
-	ContentVersion uint32                 `protobuf:"varint,5,opt,name=content_version,json=contentVersion,proto3" json:"content_version,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	TrainingCritBonusPercent int32                  `protobuf:"varint,6,opt,name=training_crit_bonus_percent,json=trainingCritBonusPercent,proto3" json:"training_crit_bonus_percent,omitempty"`
+	RulesVersion             uint32                 `protobuf:"varint,1,opt,name=rules_version,json=rulesVersion,proto3" json:"rules_version,omitempty"`
+	Cat                      *CatState              `protobuf:"bytes,2,opt,name=cat,proto3" json:"cat,omitempty"`
+	NowUnixNanos             int64                  `protobuf:"varint,3,opt,name=now_unix_nanos,json=nowUnixNanos,proto3" json:"now_unix_nanos,omitempty"`
+	Random                   *TrainingRandom        `protobuf:"bytes,4,opt,name=random,proto3" json:"random,omitempty"`
+	ContentVersion           uint32                 `protobuf:"varint,5,opt,name=content_version,json=contentVersion,proto3" json:"content_version,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *TrainRequest) Reset() {
@@ -571,6 +630,13 @@ func (x *TrainRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use TrainRequest.ProtoReflect.Descriptor instead.
 func (*TrainRequest) Descriptor() ([]byte, []int) {
 	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *TrainRequest) GetTrainingCritBonusPercent() int32 {
+	if x != nil {
+		return x.TrainingCritBonusPercent
+	}
+	return 0
 }
 
 func (x *TrainRequest) GetRulesVersion() uint32 {
@@ -678,6 +744,8 @@ type CatState struct {
 	DefBase                  int32                  `protobuf:"varint,14,opt,name=def_base,json=defBase,proto3" json:"def_base,omitempty"`
 	SpdBase                  int32                  `protobuf:"varint,15,opt,name=spd_base,json=spdBase,proto3" json:"spd_base,omitempty"`
 	Coins                    int64                  `protobuf:"varint,16,opt,name=coins,proto3" json:"coins,omitempty"`
+	Feline                   *FelineStats           `protobuf:"bytes,17,opt,name=feline,proto3" json:"feline,omitempty"`
+	FirstItemGranted         bool                   `protobuf:"varint,18,opt,name=first_item_granted,json=firstItemGranted,proto3" json:"first_item_granted,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -824,14 +892,31 @@ func (x *CatState) GetCoins() int64 {
 	return 0
 }
 
+func (x *CatState) GetFeline() *FelineStats {
+	if x != nil {
+		return x.Feline
+	}
+	return nil
+}
+
+func (x *CatState) GetFirstItemGranted() bool {
+	if x != nil {
+		return x.FirstItemGranted
+	}
+	return false
+}
+
 type TrainingRandom struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	EnergyCostRoll int32                  `protobuf:"varint,1,opt,name=energy_cost_roll,json=energyCostRoll,proto3" json:"energy_cost_roll,omitempty"`
-	XpGainRoll     int32                  `protobuf:"varint,2,opt,name=xp_gain_roll,json=xpGainRoll,proto3" json:"xp_gain_roll,omitempty"`
-	EncounterRoll  int32                  `protobuf:"varint,3,opt,name=encounter_roll,json=encounterRoll,proto3" json:"encounter_roll,omitempty"`
-	FlavorRoll     uint32                 `protobuf:"varint,4,opt,name=flavor_roll,json=flavorRoll,proto3" json:"flavor_roll,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	TrainingCritRoll int32                  `protobuf:"varint,5,opt,name=training_crit_roll,json=trainingCritRoll,proto3" json:"training_crit_roll,omitempty"` // 0..99, independent of combat crits
+	// xp_gain_roll is 0..50, mapped to 75..125 percent in rules 13.
+	EnergyCostRoll   int32  `protobuf:"varint,1,opt,name=energy_cost_roll,json=energyCostRoll,proto3" json:"energy_cost_roll,omitempty"`
+	XpGainRoll       int32  `protobuf:"varint,2,opt,name=xp_gain_roll,json=xpGainRoll,proto3" json:"xp_gain_roll,omitempty"`
+	EncounterRoll    int32  `protobuf:"varint,3,opt,name=encounter_roll,json=encounterRoll,proto3" json:"encounter_roll,omitempty"`
+	FlavorRoll       uint32 `protobuf:"varint,4,opt,name=flavor_roll,json=flavorRoll,proto3" json:"flavor_roll,omitempty"`
+	TrainingLootRoll int32  `protobuf:"varint,6,opt,name=training_loot_roll,json=trainingLootRoll,proto3" json:"training_loot_roll,omitempty"` // independent uniform 0..9999 (basis points)
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *TrainingRandom) Reset() {
@@ -864,6 +949,13 @@ func (*TrainingRandom) Descriptor() ([]byte, []int) {
 	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{3}
 }
 
+func (x *TrainingRandom) GetTrainingCritRoll() int32 {
+	if x != nil {
+		return x.TrainingCritRoll
+	}
+	return 0
+}
+
 func (x *TrainingRandom) GetEnergyCostRoll() int32 {
 	if x != nil {
 		return x.EnergyCostRoll
@@ -888,6 +980,13 @@ func (x *TrainingRandom) GetEncounterRoll() int32 {
 func (x *TrainingRandom) GetFlavorRoll() uint32 {
 	if x != nil {
 		return x.FlavorRoll
+	}
+	return 0
+}
+
+func (x *TrainingRandom) GetTrainingLootRoll() int32 {
+	if x != nil {
+		return x.TrainingLootRoll
 	}
 	return 0
 }
@@ -972,6 +1071,8 @@ type TrainResult struct {
 	Encounter         Encounter              `protobuf:"varint,8,opt,name=encounter,proto3,enum=catforge.gameengine.v1.Encounter" json:"encounter,omitempty"`
 	Flavor            uint32                 `protobuf:"varint,9,opt,name=flavor,proto3" json:"flavor,omitempty"`
 	CoinsGain         int64                  `protobuf:"varint,10,opt,name=coins_gain,json=coinsGain,proto3" json:"coins_gain,omitempty"`
+	LootItemId        string                 `protobuf:"bytes,11,opt,name=loot_item_id,json=lootItemId,proto3" json:"loot_item_id,omitempty"`
+	ProgressionFacts  []string               `protobuf:"bytes,12,rep,name=progression_facts,json=progressionFacts,proto3" json:"progression_facts,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1074,6 +1175,20 @@ func (x *TrainResult) GetCoinsGain() int64 {
 		return x.CoinsGain
 	}
 	return 0
+}
+
+func (x *TrainResult) GetLootItemId() string {
+	if x != nil {
+		return x.LootItemId
+	}
+	return ""
+}
+
+func (x *TrainResult) GetProgressionFacts() []string {
+	if x != nil {
+		return x.ProgressionFacts
+	}
+	return nil
 }
 
 type ExpeditionRequest struct {
@@ -1674,6 +1789,9 @@ func (x *LootRoll) GetItemIndex() int32 {
 
 type YardEventParticipant struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Feline        *FelineStats           `protobuf:"bytes,8,opt,name=feline,proto3" json:"feline,omitempty"`
+	Effects       []string               `protobuf:"bytes,9,rep,name=effects,proto3" json:"effects,omitempty"`
+	SpecialAction string                 `protobuf:"bytes,10,opt,name=special_action,json=specialAction,proto3" json:"special_action,omitempty"`
 	CatId         int64                  `protobuf:"varint,1,opt,name=cat_id,json=catId,proto3" json:"cat_id,omitempty"`
 	Choice        YardEventChoice        `protobuf:"varint,2,opt,name=choice,proto3,enum=catforge.gameengine.v1.YardEventChoice" json:"choice,omitempty"`
 	Level         int32                  `protobuf:"varint,3,opt,name=level,proto3" json:"level,omitempty"`
@@ -1713,6 +1831,27 @@ func (x *YardEventParticipant) ProtoReflect() protoreflect.Message {
 // Deprecated: Use YardEventParticipant.ProtoReflect.Descriptor instead.
 func (*YardEventParticipant) Descriptor() ([]byte, []int) {
 	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *YardEventParticipant) GetFeline() *FelineStats {
+	if x != nil {
+		return x.Feline
+	}
+	return nil
+}
+
+func (x *YardEventParticipant) GetEffects() []string {
+	if x != nil {
+		return x.Effects
+	}
+	return nil
+}
+
+func (x *YardEventParticipant) GetSpecialAction() string {
+	if x != nil {
+		return x.SpecialAction
+	}
+	return ""
 }
 
 func (x *YardEventParticipant) GetCatId() int64 {
@@ -1841,14 +1980,14 @@ func (x *ResolveYardEventRequest) GetParticipants() []*YardEventParticipant {
 }
 
 type YardEventParticipantResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CatId         int64                  `protobuf:"varint,1,opt,name=cat_id,json=catId,proto3" json:"cat_id,omitempty"`
-	Choice        YardEventChoice        `protobuf:"varint,2,opt,name=choice,proto3,enum=catforge.gameengine.v1.YardEventChoice" json:"choice,omitempty"`
-	Contribution  int32                  `protobuf:"varint,3,opt,name=contribution,proto3" json:"contribution,omitempty"`
-	FishReward    int32                  `protobuf:"varint,4,opt,name=fish_reward,json=fishReward,proto3" json:"fish_reward,omitempty"`
-	Mvp           bool                   `protobuf:"varint,5,opt,name=mvp,proto3" json:"mvp,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	CatId               int64                  `protobuf:"varint,1,opt,name=cat_id,json=catId,proto3" json:"cat_id,omitempty"`
+	Choice              YardEventChoice        `protobuf:"varint,2,opt,name=choice,proto3,enum=catforge.gameengine.v1.YardEventChoice" json:"choice,omitempty"`
+	Contribution        int32                  `protobuf:"varint,3,opt,name=contribution,proto3" json:"contribution,omitempty"`
+	Mvp                 bool                   `protobuf:"varint,5,opt,name=mvp,proto3" json:"mvp,omitempty"`
+	ItemEffectTriggered bool                   `protobuf:"varint,6,opt,name=item_effect_triggered,json=itemEffectTriggered,proto3" json:"item_effect_triggered,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *YardEventParticipantResult) Reset() {
@@ -1902,16 +2041,16 @@ func (x *YardEventParticipantResult) GetContribution() int32 {
 	return 0
 }
 
-func (x *YardEventParticipantResult) GetFishReward() int32 {
-	if x != nil {
-		return x.FishReward
-	}
-	return 0
-}
-
 func (x *YardEventParticipantResult) GetMvp() bool {
 	if x != nil {
 		return x.Mvp
+	}
+	return false
+}
+
+func (x *YardEventParticipantResult) GetItemEffectTriggered() bool {
+	if x != nil {
+		return x.ItemEffectTriggered
 	}
 	return false
 }
@@ -1921,11 +2060,13 @@ type ResolveYardEventResponse struct {
 	Success             bool                          `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	TeamScore           int32                         `protobuf:"varint,2,opt,name=team_score,json=teamScore,proto3" json:"team_score,omitempty"`
 	TargetScore         int32                         `protobuf:"varint,3,opt,name=target_score,json=targetScore,proto3" json:"target_score,omitempty"`
-	FishTotal           int32                         `protobuf:"varint,4,opt,name=fish_total,json=fishTotal,proto3" json:"fish_total,omitempty"`
+	YardScore           int32                         `protobuf:"varint,4,opt,name=yard_score,json=yardScore,proto3" json:"yard_score,omitempty"`
 	SecretFound         bool                          `protobuf:"varint,5,opt,name=secret_found,json=secretFound,proto3" json:"secret_found,omitempty"`
 	StrategyBonus       int32                         `protobuf:"varint,6,opt,name=strategy_bonus,json=strategyBonus,proto3" json:"strategy_bonus,omitempty"`
 	Participants        []*YardEventParticipantResult `protobuf:"bytes,7,rep,name=participants,proto3" json:"participants,omitempty"`
 	RelationshipEffects []*YardRelationshipEffect     `protobuf:"bytes,8,rep,name=relationship_effects,json=relationshipEffects,proto3" json:"relationship_effects,omitempty"`
+	OutcomeTier         YardEventOutcomeTier          `protobuf:"varint,9,opt,name=outcome_tier,json=outcomeTier,proto3,enum=catforge.gameengine.v1.YardEventOutcomeTier" json:"outcome_tier,omitempty"`
+	XpGain              int64                         `protobuf:"varint,10,opt,name=xp_gain,json=xpGain,proto3" json:"xp_gain,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1981,9 +2122,9 @@ func (x *ResolveYardEventResponse) GetTargetScore() int32 {
 	return 0
 }
 
-func (x *ResolveYardEventResponse) GetFishTotal() int32 {
+func (x *ResolveYardEventResponse) GetYardScore() int32 {
 	if x != nil {
-		return x.FishTotal
+		return x.YardScore
 	}
 	return 0
 }
@@ -2014,6 +2155,20 @@ func (x *ResolveYardEventResponse) GetRelationshipEffects() []*YardRelationshipE
 		return x.RelationshipEffects
 	}
 	return nil
+}
+
+func (x *ResolveYardEventResponse) GetOutcomeTier() YardEventOutcomeTier {
+	if x != nil {
+		return x.OutcomeTier
+	}
+	return YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_FAILURE
+}
+
+func (x *ResolveYardEventResponse) GetXpGain() int64 {
+	if x != nil {
+		return x.XpGain
+	}
+	return 0
 }
 
 type YardRelationshipEffect struct {
@@ -2336,12 +2491,249 @@ func (x *FightResponse) GetTurns() []*FightTurn {
 	return nil
 }
 
+type FelineStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClawsTenthMm  int32                  `protobuf:"varint,1,opt,name=claws_tenth_mm,json=clawsTenthMm,proto3" json:"claws_tenth_mm,omitempty"`
+	WeightGrams   int32                  `protobuf:"varint,2,opt,name=weight_grams,json=weightGrams,proto3" json:"weight_grams,omitempty"`
+	TailMm        int32                  `protobuf:"varint,3,opt,name=tail_mm,json=tailMm,proto3" json:"tail_mm,omitempty"`
+	WhiskerSpanMm int32                  `protobuf:"varint,4,opt,name=whisker_span_mm,json=whiskerSpanMm,proto3" json:"whisker_span_mm,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FelineStats) Reset() {
+	*x = FelineStats{}
+	mi := &file_gameengine_v1_game_engine_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FelineStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FelineStats) ProtoMessage() {}
+
+func (x *FelineStats) ProtoReflect() protoreflect.Message {
+	mi := &file_gameengine_v1_game_engine_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FelineStats.ProtoReflect.Descriptor instead.
+func (*FelineStats) Descriptor() ([]byte, []int) {
+	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *FelineStats) GetClawsTenthMm() int32 {
+	if x != nil {
+		return x.ClawsTenthMm
+	}
+	return 0
+}
+
+func (x *FelineStats) GetWeightGrams() int32 {
+	if x != nil {
+		return x.WeightGrams
+	}
+	return 0
+}
+
+func (x *FelineStats) GetTailMm() int32 {
+	if x != nil {
+		return x.TailMm
+	}
+	return 0
+}
+
+func (x *FelineStats) GetWhiskerSpanMm() int32 {
+	if x != nil {
+		return x.WhiskerSpanMm
+	}
+	return 0
+}
+
+type ProgressRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	RulesVersion     uint32                 `protobuf:"varint,1,opt,name=rules_version,json=rulesVersion,proto3" json:"rules_version,omitempty"`
+	Cat              *CatState              `protobuf:"bytes,2,opt,name=cat,proto3" json:"cat,omitempty"`
+	XpGain           int64                  `protobuf:"varint,3,opt,name=xp_gain,json=xpGain,proto3" json:"xp_gain,omitempty"`
+	Seed             uint64                 `protobuf:"varint,4,opt,name=seed,proto3" json:"seed,omitempty"`
+	Source           string                 `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`
+	OutcomeTier      string                 `protobuf:"bytes,6,opt,name=outcome_tier,json=outcomeTier,proto3" json:"outcome_tier,omitempty"`
+	SecretFound      bool                   `protobuf:"varint,7,opt,name=secret_found,json=secretFound,proto3" json:"secret_found,omitempty"`
+	EnergySpent      int32                  `protobuf:"varint,8,opt,name=energy_spent,json=energySpent,proto3" json:"energy_spent,omitempty"`
+	TrainingLootRoll int32                  `protobuf:"varint,9,opt,name=training_loot_roll,json=trainingLootRoll,proto3" json:"training_loot_roll,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ProgressRequest) Reset() {
+	*x = ProgressRequest{}
+	mi := &file_gameengine_v1_game_engine_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProgressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProgressRequest) ProtoMessage() {}
+
+func (x *ProgressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gameengine_v1_game_engine_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProgressRequest.ProtoReflect.Descriptor instead.
+func (*ProgressRequest) Descriptor() ([]byte, []int) {
+	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ProgressRequest) GetRulesVersion() uint32 {
+	if x != nil {
+		return x.RulesVersion
+	}
+	return 0
+}
+
+func (x *ProgressRequest) GetCat() *CatState {
+	if x != nil {
+		return x.Cat
+	}
+	return nil
+}
+
+func (x *ProgressRequest) GetXpGain() int64 {
+	if x != nil {
+		return x.XpGain
+	}
+	return 0
+}
+
+func (x *ProgressRequest) GetSeed() uint64 {
+	if x != nil {
+		return x.Seed
+	}
+	return 0
+}
+
+func (x *ProgressRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *ProgressRequest) GetOutcomeTier() string {
+	if x != nil {
+		return x.OutcomeTier
+	}
+	return ""
+}
+
+func (x *ProgressRequest) GetSecretFound() bool {
+	if x != nil {
+		return x.SecretFound
+	}
+	return false
+}
+
+func (x *ProgressRequest) GetEnergySpent() int32 {
+	if x != nil {
+		return x.EnergySpent
+	}
+	return 0
+}
+
+func (x *ProgressRequest) GetTrainingLootRoll() int32 {
+	if x != nil {
+		return x.TrainingLootRoll
+	}
+	return 0
+}
+
+type ProgressResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Cat           *CatState              `protobuf:"bytes,1,opt,name=cat,proto3" json:"cat,omitempty"`
+	LootItemId    string                 `protobuf:"bytes,2,opt,name=loot_item_id,json=lootItemId,proto3" json:"loot_item_id,omitempty"`
+	Facts         []string               `protobuf:"bytes,3,rep,name=facts,proto3" json:"facts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProgressResponse) Reset() {
+	*x = ProgressResponse{}
+	mi := &file_gameengine_v1_game_engine_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProgressResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProgressResponse) ProtoMessage() {}
+
+func (x *ProgressResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gameengine_v1_game_engine_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProgressResponse.ProtoReflect.Descriptor instead.
+func (*ProgressResponse) Descriptor() ([]byte, []int) {
+	return file_gameengine_v1_game_engine_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ProgressResponse) GetCat() *CatState {
+	if x != nil {
+		return x.Cat
+	}
+	return nil
+}
+
+func (x *ProgressResponse) GetLootItemId() string {
+	if x != nil {
+		return x.LootItemId
+	}
+	return ""
+}
+
+func (x *ProgressResponse) GetFacts() []string {
+	if x != nil {
+		return x.Facts
+	}
+	return nil
+}
+
 var File_gameengine_v1_game_engine_proto protoreflect.FileDescriptor
 
 const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"\n" +
-	"\x1fgameengine/v1/game_engine.proto\x12\x16catforge.gameengine.v1\"\xf6\x01\n" +
-	"\fTrainRequest\x12#\n" +
+	"\x1fgameengine/v1/game_engine.proto\x12\x16catforge.gameengine.v1\"\xb5\x02\n" +
+	"\fTrainRequest\x12=\n" +
+	"\x1btraining_crit_bonus_percent\x18\x06 \x01(\x05R\x18trainingCritBonusPercent\x12#\n" +
 	"\rrules_version\x18\x01 \x01(\rR\frulesVersion\x122\n" +
 	"\x03cat\x18\x02 \x01(\v2 .catforge.gameengine.v1.CatStateR\x03cat\x12$\n" +
 	"\x0enow_unix_nanos\x18\x03 \x01(\x03R\fnowUnixNanos\x12>\n" +
@@ -2349,7 +2741,7 @@ const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"\x0fcontent_version\x18\x05 \x01(\rR\x0econtentVersion\"\x80\x01\n" +
 	"\rTrainResponse\x122\n" +
 	"\x03cat\x18\x01 \x01(\v2 .catforge.gameengine.v1.CatStateR\x03cat\x12;\n" +
-	"\x06result\x18\x02 \x01(\v2#.catforge.gameengine.v1.TrainResultR\x06result\"\x96\x04\n" +
+	"\x06result\x18\x02 \x01(\v2#.catforge.gameengine.v1.TrainResultR\x06result\"\x81\x05\n" +
 	"\bCatState\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x03R\x06userId\x12#\n" +
@@ -2367,21 +2759,25 @@ const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"\batk_base\x18\r \x01(\x05R\aatkBase\x12\x19\n" +
 	"\bdef_base\x18\x0e \x01(\x05R\adefBase\x12\x19\n" +
 	"\bspd_base\x18\x0f \x01(\x05R\aspdBase\x12\x14\n" +
-	"\x05coins\x18\x10 \x01(\x03R\x05coinsB\x1b\n" +
+	"\x05coins\x18\x10 \x01(\x03R\x05coins\x12;\n" +
+	"\x06feline\x18\x11 \x01(\v2#.catforge.gameengine.v1.FelineStatsR\x06feline\x12,\n" +
+	"\x12first_item_granted\x18\x12 \x01(\bR\x10firstItemGrantedB\x1b\n" +
 	"\x19_last_train_at_unix_nanosB\x1f\n" +
-	"\x1d_energy_updated_at_unix_nanos\"\xa4\x01\n" +
-	"\x0eTrainingRandom\x12(\n" +
+	"\x1d_energy_updated_at_unix_nanos\"\x80\x02\n" +
+	"\x0eTrainingRandom\x12,\n" +
+	"\x12training_crit_roll\x18\x05 \x01(\x05R\x10trainingCritRoll\x12(\n" +
 	"\x10energy_cost_roll\x18\x01 \x01(\x05R\x0eenergyCostRoll\x12 \n" +
 	"\fxp_gain_roll\x18\x02 \x01(\x05R\n" +
 	"xpGainRoll\x12%\n" +
 	"\x0eencounter_roll\x18\x03 \x01(\x05R\rencounterRoll\x12\x1f\n" +
 	"\vflavor_roll\x18\x04 \x01(\rR\n" +
-	"flavorRoll\"Q\n" +
+	"flavorRoll\x12,\n" +
+	"\x12training_loot_roll\x18\x06 \x01(\x05R\x10trainingLootRoll\"Q\n" +
 	"\tStatDelta\x12\x0e\n" +
 	"\x02hp\x18\x01 \x01(\x05R\x02hp\x12\x10\n" +
 	"\x03atk\x18\x02 \x01(\x05R\x03atk\x12\x10\n" +
 	"\x03def\x18\x03 \x01(\x05R\x03def\x12\x10\n" +
-	"\x03spd\x18\x04 \x01(\x05R\x03spd\"\xb0\x03\n" +
+	"\x03spd\x18\x04 \x01(\x05R\x03spd\"\xff\x03\n" +
 	"\vTrainResult\x12A\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2'.catforge.gameengine.v1.TrainingOutcomeR\aoutcome\x12\x17\n" +
 	"\axp_gain\x18\x02 \x01(\x03R\x06xpGain\x12\x1f\n" +
@@ -2395,7 +2791,10 @@ const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"\x06flavor\x18\t \x01(\rR\x06flavor\x12\x1d\n" +
 	"\n" +
 	"coins_gain\x18\n" +
-	" \x01(\x03R\tcoinsGain\"\x95\x04\n" +
+	" \x01(\x03R\tcoinsGain\x12 \n" +
+	"\floot_item_id\x18\v \x01(\tR\n" +
+	"lootItemId\x12+\n" +
+	"\x11progression_facts\x18\f \x03(\tR\x10progressionFacts\"\x95\x04\n" +
 	"\x11ExpeditionRequest\x12#\n" +
 	"\rrules_version\x18\x01 \x01(\rR\frulesVersion\x122\n" +
 	"\x03cat\x18\x02 \x01(\v2 .catforge.gameengine.v1.CatStateR\x03cat\x12$\n" +
@@ -2459,8 +2858,12 @@ const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"\adropped\x18\x01 \x01(\bR\adropped\x12:\n" +
 	"\x06rarity\x18\x02 \x01(\x0e2\".catforge.gameengine.v1.ItemRarityR\x06rarity\x12\x1d\n" +
 	"\n" +
-	"item_index\x18\x03 \x01(\x05R\titemIndex\"\xca\x01\n" +
-	"\x14YardEventParticipant\x12\x15\n" +
+	"item_index\x18\x03 \x01(\x05R\titemIndex\"\xc8\x02\n" +
+	"\x14YardEventParticipant\x12;\n" +
+	"\x06feline\x18\b \x01(\v2#.catforge.gameengine.v1.FelineStatsR\x06feline\x12\x18\n" +
+	"\aeffects\x18\t \x03(\tR\aeffects\x12%\n" +
+	"\x0especial_action\x18\n" +
+	" \x01(\tR\rspecialAction\x12\x15\n" +
 	"\x06cat_id\x18\x01 \x01(\x03R\x05catId\x12?\n" +
 	"\x06choice\x18\x02 \x01(\x0e2'.catforge.gameengine.v1.YardEventChoiceR\x06choice\x12\x14\n" +
 	"\x05level\x18\x03 \x01(\x05R\x05level\x12\x0e\n" +
@@ -2474,25 +2877,27 @@ const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"\x04seed\x18\x03 \x01(\x04R\x04seed\x12D\n" +
 	"\n" +
 	"event_type\x18\x04 \x01(\x0e2%.catforge.gameengine.v1.YardEventTypeR\teventType\x12P\n" +
-	"\fparticipants\x18\x05 \x03(\v2,.catforge.gameengine.v1.YardEventParticipantR\fparticipants\"\xcb\x01\n" +
+	"\fparticipants\x18\x05 \x03(\v2,.catforge.gameengine.v1.YardEventParticipantR\fparticipants\"\xf1\x01\n" +
 	"\x1aYardEventParticipantResult\x12\x15\n" +
 	"\x06cat_id\x18\x01 \x01(\x03R\x05catId\x12?\n" +
 	"\x06choice\x18\x02 \x01(\x0e2'.catforge.gameengine.v1.YardEventChoiceR\x06choice\x12\"\n" +
-	"\fcontribution\x18\x03 \x01(\x05R\fcontribution\x12\x1f\n" +
-	"\vfish_reward\x18\x04 \x01(\x05R\n" +
-	"fishReward\x12\x10\n" +
-	"\x03mvp\x18\x05 \x01(\bR\x03mvp\"\x9a\x03\n" +
+	"\fcontribution\x18\x03 \x01(\x05R\fcontribution\x12\x10\n" +
+	"\x03mvp\x18\x05 \x01(\bR\x03mvp\x122\n" +
+	"\x15item_effect_triggered\x18\x06 \x01(\bR\x13itemEffectTriggeredJ\x04\b\x04\x10\x05R\vfish_reward\"\x84\x04\n" +
 	"\x18ResolveYardEventResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1d\n" +
 	"\n" +
 	"team_score\x18\x02 \x01(\x05R\tteamScore\x12!\n" +
 	"\ftarget_score\x18\x03 \x01(\x05R\vtargetScore\x12\x1d\n" +
 	"\n" +
-	"fish_total\x18\x04 \x01(\x05R\tfishTotal\x12!\n" +
+	"yard_score\x18\x04 \x01(\x05R\tyardScore\x12!\n" +
 	"\fsecret_found\x18\x05 \x01(\bR\vsecretFound\x12%\n" +
 	"\x0estrategy_bonus\x18\x06 \x01(\x05R\rstrategyBonus\x12V\n" +
 	"\fparticipants\x18\a \x03(\v22.catforge.gameengine.v1.YardEventParticipantResultR\fparticipants\x12a\n" +
-	"\x14relationship_effects\x18\b \x03(\v2..catforge.gameengine.v1.YardRelationshipEffectR\x13relationshipEffects\"\xc1\x01\n" +
+	"\x14relationship_effects\x18\b \x03(\v2..catforge.gameengine.v1.YardRelationshipEffectR\x13relationshipEffects\x12O\n" +
+	"\foutcome_tier\x18\t \x01(\x0e2,.catforge.gameengine.v1.YardEventOutcomeTierR\voutcomeTier\x12\x17\n" +
+	"\axp_gain\x18\n" +
+	" \x01(\x03R\x06xpGain\"\xc1\x01\n" +
 	"\x16YardRelationshipEffect\x12\x18\n" +
 	"\bcat_a_id\x18\x01 \x01(\x03R\x06catAId\x12\x18\n" +
 	"\bcat_b_id\x18\x02 \x01(\x03R\x06catBId\x12)\n" +
@@ -2521,7 +2926,27 @@ const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"final_hp_a\x18\x04 \x01(\x05R\bfinalHpA\x12\x1c\n" +
 	"\n" +
 	"final_hp_b\x18\x05 \x01(\x05R\bfinalHpB\x127\n" +
-	"\x05turns\x18\x06 \x03(\v2!.catforge.gameengine.v1.FightTurnR\x05turns*R\n" +
+	"\x05turns\x18\x06 \x03(\v2!.catforge.gameengine.v1.FightTurnR\x05turns\"\x97\x01\n" +
+	"\vFelineStats\x12$\n" +
+	"\x0eclaws_tenth_mm\x18\x01 \x01(\x05R\fclawsTenthMm\x12!\n" +
+	"\fweight_grams\x18\x02 \x01(\x05R\vweightGrams\x12\x17\n" +
+	"\atail_mm\x18\x03 \x01(\x05R\x06tailMm\x12&\n" +
+	"\x0fwhisker_span_mm\x18\x04 \x01(\x05R\rwhiskerSpanMm\"\xc6\x02\n" +
+	"\x0fProgressRequest\x12#\n" +
+	"\rrules_version\x18\x01 \x01(\rR\frulesVersion\x122\n" +
+	"\x03cat\x18\x02 \x01(\v2 .catforge.gameengine.v1.CatStateR\x03cat\x12\x17\n" +
+	"\axp_gain\x18\x03 \x01(\x03R\x06xpGain\x12\x12\n" +
+	"\x04seed\x18\x04 \x01(\x04R\x04seed\x12\x16\n" +
+	"\x06source\x18\x05 \x01(\tR\x06source\x12!\n" +
+	"\foutcome_tier\x18\x06 \x01(\tR\voutcomeTier\x12!\n" +
+	"\fsecret_found\x18\a \x01(\bR\vsecretFound\x12!\n" +
+	"\fenergy_spent\x18\b \x01(\x05R\venergySpent\x12,\n" +
+	"\x12training_loot_roll\x18\t \x01(\x05R\x10trainingLootRoll\"~\n" +
+	"\x10ProgressResponse\x122\n" +
+	"\x03cat\x18\x01 \x01(\v2 .catforge.gameengine.v1.CatStateR\x03cat\x12 \n" +
+	"\floot_item_id\x18\x02 \x01(\tR\n" +
+	"lootItemId\x12\x14\n" +
+	"\x05facts\x18\x03 \x03(\tR\x05facts*R\n" +
 	"\x0fTrainingOutcome\x12\x17\n" +
 	"\x13TRAINING_OUTCOME_OK\x10\x00\x12&\n" +
 	"\"TRAINING_OUTCOME_NOT_ENOUGH_ENERGY\x10\x01*\x82\x01\n" +
@@ -2561,16 +2986,24 @@ const file_gameengine_v1_game_engine_proto_rawDesc = "" +
 	"\x17ITEM_RARITY_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12ITEM_RARITY_COMMON\x10\x01\x12\x14\n" +
 	"\x10ITEM_RARITY_RARE\x10\x02\x12\x14\n" +
-	"\x10ITEM_RARITY_EPIC\x10\x03*P\n" +
+	"\x10ITEM_RARITY_EPIC\x10\x03*\x8a\x01\n" +
 	"\rYardEventType\x12\x1f\n" +
 	"\x1bYARD_EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x1e\n" +
-	"\x1aYARD_EVENT_TYPE_FISH_TRUCK\x10\x01*\x8e\x01\n" +
+	"\x1aYARD_EVENT_TYPE_FISH_TRUCK\x10\x01\x12\x1b\n" +
+	"\x17YARD_EVENT_TYPE_BIG_DOG\x10\x02\x12\x1b\n" +
+	"\x17YARD_EVENT_TYPE_BIG_BOX\x10\x03*\x8e\x01\n" +
 	"\x0fYardEventChoice\x12!\n" +
 	"\x1dYARD_EVENT_CHOICE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17YARD_EVENT_CHOICE_STEAL\x10\x01\x12\x1e\n" +
 	"\x1aYARD_EVENT_CHOICE_DISTRACT\x10\x02\x12\x1b\n" +
-	"\x17YARD_EVENT_CHOICE_SCOUT\x10\x032\x9b\x03\n" +
-	"\x11GameEngineService\x12T\n" +
+	"\x17YARD_EVENT_CHOICE_SCOUT\x10\x03*\xae\x01\n" +
+	"\x14YardEventOutcomeTier\x12#\n" +
+	"\x1fYARD_EVENT_OUTCOME_TIER_FAILURE\x10\x00\x12#\n" +
+	"\x1fYARD_EVENT_OUTCOME_TIER_PARTIAL\x10\x01\x12#\n" +
+	"\x1fYARD_EVENT_OUTCOME_TIER_SUCCESS\x10\x02\x12'\n" +
+	"#YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL\x10\x032\xfa\x03\n" +
+	"\x11GameEngineService\x12]\n" +
+	"\bProgress\x12'.catforge.gameengine.v1.ProgressRequest\x1a(.catforge.gameengine.v1.ProgressResponse\x12T\n" +
 	"\x05Train\x12$.catforge.gameengine.v1.TrainRequest\x1a%.catforge.gameengine.v1.TrainResponse\x12c\n" +
 	"\n" +
 	"Expedition\x12).catforge.gameengine.v1.ExpeditionRequest\x1a*.catforge.gameengine.v1.ExpeditionResponse\x12u\n" +
@@ -2589,8 +3022,8 @@ func file_gameengine_v1_game_engine_proto_rawDescGZIP() []byte {
 	return file_gameengine_v1_game_engine_proto_rawDescData
 }
 
-var file_gameengine_v1_game_engine_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
-var file_gameengine_v1_game_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_gameengine_v1_game_engine_proto_enumTypes = make([]protoimpl.EnumInfo, 11)
+var file_gameengine_v1_game_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_gameengine_v1_game_engine_proto_goTypes = []any{
 	(TrainingOutcome)(0),               // 0: catforge.gameengine.v1.TrainingOutcome
 	(Encounter)(0),                     // 1: catforge.gameengine.v1.Encounter
@@ -2602,75 +3035,86 @@ var file_gameengine_v1_game_engine_proto_goTypes = []any{
 	(ItemRarity)(0),                    // 7: catforge.gameengine.v1.ItemRarity
 	(YardEventType)(0),                 // 8: catforge.gameengine.v1.YardEventType
 	(YardEventChoice)(0),               // 9: catforge.gameengine.v1.YardEventChoice
-	(*TrainRequest)(nil),               // 10: catforge.gameengine.v1.TrainRequest
-	(*TrainResponse)(nil),              // 11: catforge.gameengine.v1.TrainResponse
-	(*CatState)(nil),                   // 12: catforge.gameengine.v1.CatState
-	(*TrainingRandom)(nil),             // 13: catforge.gameengine.v1.TrainingRandom
-	(*StatDelta)(nil),                  // 14: catforge.gameengine.v1.StatDelta
-	(*TrainResult)(nil),                // 15: catforge.gameengine.v1.TrainResult
-	(*ExpeditionRequest)(nil),          // 16: catforge.gameengine.v1.ExpeditionRequest
-	(*LootCounts)(nil),                 // 17: catforge.gameengine.v1.LootCounts
-	(*ExpeditionResponse)(nil),         // 18: catforge.gameengine.v1.ExpeditionResponse
-	(*Enemy)(nil),                      // 19: catforge.gameengine.v1.Enemy
-	(*BattleTurn)(nil),                 // 20: catforge.gameengine.v1.BattleTurn
-	(*ExpeditionResult)(nil),           // 21: catforge.gameengine.v1.ExpeditionResult
-	(*LootRoll)(nil),                   // 22: catforge.gameengine.v1.LootRoll
-	(*YardEventParticipant)(nil),       // 23: catforge.gameengine.v1.YardEventParticipant
-	(*ResolveYardEventRequest)(nil),    // 24: catforge.gameengine.v1.ResolveYardEventRequest
-	(*YardEventParticipantResult)(nil), // 25: catforge.gameengine.v1.YardEventParticipantResult
-	(*ResolveYardEventResponse)(nil),   // 26: catforge.gameengine.v1.ResolveYardEventResponse
-	(*YardRelationshipEffect)(nil),     // 27: catforge.gameengine.v1.YardRelationshipEffect
-	(*FightRequest)(nil),               // 28: catforge.gameengine.v1.FightRequest
-	(*FightTurn)(nil),                  // 29: catforge.gameengine.v1.FightTurn
-	(*FightResponse)(nil),              // 30: catforge.gameengine.v1.FightResponse
+	(YardEventOutcomeTier)(0),          // 10: catforge.gameengine.v1.YardEventOutcomeTier
+	(*TrainRequest)(nil),               // 11: catforge.gameengine.v1.TrainRequest
+	(*TrainResponse)(nil),              // 12: catforge.gameengine.v1.TrainResponse
+	(*CatState)(nil),                   // 13: catforge.gameengine.v1.CatState
+	(*TrainingRandom)(nil),             // 14: catforge.gameengine.v1.TrainingRandom
+	(*StatDelta)(nil),                  // 15: catforge.gameengine.v1.StatDelta
+	(*TrainResult)(nil),                // 16: catforge.gameengine.v1.TrainResult
+	(*ExpeditionRequest)(nil),          // 17: catforge.gameengine.v1.ExpeditionRequest
+	(*LootCounts)(nil),                 // 18: catforge.gameengine.v1.LootCounts
+	(*ExpeditionResponse)(nil),         // 19: catforge.gameengine.v1.ExpeditionResponse
+	(*Enemy)(nil),                      // 20: catforge.gameengine.v1.Enemy
+	(*BattleTurn)(nil),                 // 21: catforge.gameengine.v1.BattleTurn
+	(*ExpeditionResult)(nil),           // 22: catforge.gameengine.v1.ExpeditionResult
+	(*LootRoll)(nil),                   // 23: catforge.gameengine.v1.LootRoll
+	(*YardEventParticipant)(nil),       // 24: catforge.gameengine.v1.YardEventParticipant
+	(*ResolveYardEventRequest)(nil),    // 25: catforge.gameengine.v1.ResolveYardEventRequest
+	(*YardEventParticipantResult)(nil), // 26: catforge.gameengine.v1.YardEventParticipantResult
+	(*ResolveYardEventResponse)(nil),   // 27: catforge.gameengine.v1.ResolveYardEventResponse
+	(*YardRelationshipEffect)(nil),     // 28: catforge.gameengine.v1.YardRelationshipEffect
+	(*FightRequest)(nil),               // 29: catforge.gameengine.v1.FightRequest
+	(*FightTurn)(nil),                  // 30: catforge.gameengine.v1.FightTurn
+	(*FightResponse)(nil),              // 31: catforge.gameengine.v1.FightResponse
+	(*FelineStats)(nil),                // 32: catforge.gameengine.v1.FelineStats
+	(*ProgressRequest)(nil),            // 33: catforge.gameengine.v1.ProgressRequest
+	(*ProgressResponse)(nil),           // 34: catforge.gameengine.v1.ProgressResponse
 }
 var file_gameengine_v1_game_engine_proto_depIdxs = []int32{
-	12, // 0: catforge.gameengine.v1.TrainRequest.cat:type_name -> catforge.gameengine.v1.CatState
-	13, // 1: catforge.gameengine.v1.TrainRequest.random:type_name -> catforge.gameengine.v1.TrainingRandom
-	12, // 2: catforge.gameengine.v1.TrainResponse.cat:type_name -> catforge.gameengine.v1.CatState
-	15, // 3: catforge.gameengine.v1.TrainResponse.result:type_name -> catforge.gameengine.v1.TrainResult
-	0,  // 4: catforge.gameengine.v1.TrainResult.outcome:type_name -> catforge.gameengine.v1.TrainingOutcome
-	14, // 5: catforge.gameengine.v1.TrainResult.stats_gained:type_name -> catforge.gameengine.v1.StatDelta
-	1,  // 6: catforge.gameengine.v1.TrainResult.encounter:type_name -> catforge.gameengine.v1.Encounter
-	12, // 7: catforge.gameengine.v1.ExpeditionRequest.cat:type_name -> catforge.gameengine.v1.CatState
-	3,  // 8: catforge.gameengine.v1.ExpeditionRequest.location:type_name -> catforge.gameengine.v1.ExpeditionLocation
-	4,  // 9: catforge.gameengine.v1.ExpeditionRequest.difficulty:type_name -> catforge.gameengine.v1.ExpeditionDifficulty
-	14, // 10: catforge.gameengine.v1.ExpeditionRequest.equipment_bonus:type_name -> catforge.gameengine.v1.StatDelta
-	17, // 11: catforge.gameengine.v1.ExpeditionRequest.loot_counts:type_name -> catforge.gameengine.v1.LootCounts
-	12, // 12: catforge.gameengine.v1.ExpeditionResponse.cat:type_name -> catforge.gameengine.v1.CatState
-	21, // 13: catforge.gameengine.v1.ExpeditionResponse.result:type_name -> catforge.gameengine.v1.ExpeditionResult
-	5,  // 14: catforge.gameengine.v1.Enemy.kind:type_name -> catforge.gameengine.v1.EnemyKind
-	6,  // 15: catforge.gameengine.v1.BattleTurn.actor:type_name -> catforge.gameengine.v1.BattleActor
-	2,  // 16: catforge.gameengine.v1.ExpeditionResult.outcome:type_name -> catforge.gameengine.v1.ExpeditionOutcome
-	19, // 17: catforge.gameengine.v1.ExpeditionResult.enemy:type_name -> catforge.gameengine.v1.Enemy
-	14, // 18: catforge.gameengine.v1.ExpeditionResult.stats_gained:type_name -> catforge.gameengine.v1.StatDelta
-	20, // 19: catforge.gameengine.v1.ExpeditionResult.turns:type_name -> catforge.gameengine.v1.BattleTurn
-	3,  // 20: catforge.gameengine.v1.ExpeditionResult.location:type_name -> catforge.gameengine.v1.ExpeditionLocation
-	4,  // 21: catforge.gameengine.v1.ExpeditionResult.difficulty:type_name -> catforge.gameengine.v1.ExpeditionDifficulty
-	22, // 22: catforge.gameengine.v1.ExpeditionResult.loot:type_name -> catforge.gameengine.v1.LootRoll
-	7,  // 23: catforge.gameengine.v1.LootRoll.rarity:type_name -> catforge.gameengine.v1.ItemRarity
-	9,  // 24: catforge.gameengine.v1.YardEventParticipant.choice:type_name -> catforge.gameengine.v1.YardEventChoice
-	8,  // 25: catforge.gameengine.v1.ResolveYardEventRequest.event_type:type_name -> catforge.gameengine.v1.YardEventType
-	23, // 26: catforge.gameengine.v1.ResolveYardEventRequest.participants:type_name -> catforge.gameengine.v1.YardEventParticipant
-	9,  // 27: catforge.gameengine.v1.YardEventParticipantResult.choice:type_name -> catforge.gameengine.v1.YardEventChoice
-	25, // 28: catforge.gameengine.v1.ResolveYardEventResponse.participants:type_name -> catforge.gameengine.v1.YardEventParticipantResult
-	27, // 29: catforge.gameengine.v1.ResolveYardEventResponse.relationship_effects:type_name -> catforge.gameengine.v1.YardRelationshipEffect
-	12, // 30: catforge.gameengine.v1.FightRequest.cat_a:type_name -> catforge.gameengine.v1.CatState
-	12, // 31: catforge.gameengine.v1.FightRequest.cat_b:type_name -> catforge.gameengine.v1.CatState
-	29, // 32: catforge.gameengine.v1.FightResponse.turns:type_name -> catforge.gameengine.v1.FightTurn
-	10, // 33: catforge.gameengine.v1.GameEngineService.Train:input_type -> catforge.gameengine.v1.TrainRequest
-	16, // 34: catforge.gameengine.v1.GameEngineService.Expedition:input_type -> catforge.gameengine.v1.ExpeditionRequest
-	24, // 35: catforge.gameengine.v1.GameEngineService.ResolveYardEvent:input_type -> catforge.gameengine.v1.ResolveYardEventRequest
-	28, // 36: catforge.gameengine.v1.GameEngineService.Fight:input_type -> catforge.gameengine.v1.FightRequest
-	11, // 37: catforge.gameengine.v1.GameEngineService.Train:output_type -> catforge.gameengine.v1.TrainResponse
-	18, // 38: catforge.gameengine.v1.GameEngineService.Expedition:output_type -> catforge.gameengine.v1.ExpeditionResponse
-	26, // 39: catforge.gameengine.v1.GameEngineService.ResolveYardEvent:output_type -> catforge.gameengine.v1.ResolveYardEventResponse
-	30, // 40: catforge.gameengine.v1.GameEngineService.Fight:output_type -> catforge.gameengine.v1.FightResponse
-	37, // [37:41] is the sub-list for method output_type
-	33, // [33:37] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	13, // 0: catforge.gameengine.v1.TrainRequest.cat:type_name -> catforge.gameengine.v1.CatState
+	14, // 1: catforge.gameengine.v1.TrainRequest.random:type_name -> catforge.gameengine.v1.TrainingRandom
+	13, // 2: catforge.gameengine.v1.TrainResponse.cat:type_name -> catforge.gameengine.v1.CatState
+	16, // 3: catforge.gameengine.v1.TrainResponse.result:type_name -> catforge.gameengine.v1.TrainResult
+	32, // 4: catforge.gameengine.v1.CatState.feline:type_name -> catforge.gameengine.v1.FelineStats
+	0,  // 5: catforge.gameengine.v1.TrainResult.outcome:type_name -> catforge.gameengine.v1.TrainingOutcome
+	15, // 6: catforge.gameengine.v1.TrainResult.stats_gained:type_name -> catforge.gameengine.v1.StatDelta
+	1,  // 7: catforge.gameengine.v1.TrainResult.encounter:type_name -> catforge.gameengine.v1.Encounter
+	13, // 8: catforge.gameengine.v1.ExpeditionRequest.cat:type_name -> catforge.gameengine.v1.CatState
+	3,  // 9: catforge.gameengine.v1.ExpeditionRequest.location:type_name -> catforge.gameengine.v1.ExpeditionLocation
+	4,  // 10: catforge.gameengine.v1.ExpeditionRequest.difficulty:type_name -> catforge.gameengine.v1.ExpeditionDifficulty
+	15, // 11: catforge.gameengine.v1.ExpeditionRequest.equipment_bonus:type_name -> catforge.gameengine.v1.StatDelta
+	18, // 12: catforge.gameengine.v1.ExpeditionRequest.loot_counts:type_name -> catforge.gameengine.v1.LootCounts
+	13, // 13: catforge.gameengine.v1.ExpeditionResponse.cat:type_name -> catforge.gameengine.v1.CatState
+	22, // 14: catforge.gameengine.v1.ExpeditionResponse.result:type_name -> catforge.gameengine.v1.ExpeditionResult
+	5,  // 15: catforge.gameengine.v1.Enemy.kind:type_name -> catforge.gameengine.v1.EnemyKind
+	6,  // 16: catforge.gameengine.v1.BattleTurn.actor:type_name -> catforge.gameengine.v1.BattleActor
+	2,  // 17: catforge.gameengine.v1.ExpeditionResult.outcome:type_name -> catforge.gameengine.v1.ExpeditionOutcome
+	20, // 18: catforge.gameengine.v1.ExpeditionResult.enemy:type_name -> catforge.gameengine.v1.Enemy
+	15, // 19: catforge.gameengine.v1.ExpeditionResult.stats_gained:type_name -> catforge.gameengine.v1.StatDelta
+	21, // 20: catforge.gameengine.v1.ExpeditionResult.turns:type_name -> catforge.gameengine.v1.BattleTurn
+	3,  // 21: catforge.gameengine.v1.ExpeditionResult.location:type_name -> catforge.gameengine.v1.ExpeditionLocation
+	4,  // 22: catforge.gameengine.v1.ExpeditionResult.difficulty:type_name -> catforge.gameengine.v1.ExpeditionDifficulty
+	23, // 23: catforge.gameengine.v1.ExpeditionResult.loot:type_name -> catforge.gameengine.v1.LootRoll
+	7,  // 24: catforge.gameengine.v1.LootRoll.rarity:type_name -> catforge.gameengine.v1.ItemRarity
+	32, // 25: catforge.gameengine.v1.YardEventParticipant.feline:type_name -> catforge.gameengine.v1.FelineStats
+	9,  // 26: catforge.gameengine.v1.YardEventParticipant.choice:type_name -> catforge.gameengine.v1.YardEventChoice
+	8,  // 27: catforge.gameengine.v1.ResolveYardEventRequest.event_type:type_name -> catforge.gameengine.v1.YardEventType
+	24, // 28: catforge.gameengine.v1.ResolveYardEventRequest.participants:type_name -> catforge.gameengine.v1.YardEventParticipant
+	9,  // 29: catforge.gameengine.v1.YardEventParticipantResult.choice:type_name -> catforge.gameengine.v1.YardEventChoice
+	26, // 30: catforge.gameengine.v1.ResolveYardEventResponse.participants:type_name -> catforge.gameengine.v1.YardEventParticipantResult
+	28, // 31: catforge.gameengine.v1.ResolveYardEventResponse.relationship_effects:type_name -> catforge.gameengine.v1.YardRelationshipEffect
+	10, // 32: catforge.gameengine.v1.ResolveYardEventResponse.outcome_tier:type_name -> catforge.gameengine.v1.YardEventOutcomeTier
+	13, // 33: catforge.gameengine.v1.FightRequest.cat_a:type_name -> catforge.gameengine.v1.CatState
+	13, // 34: catforge.gameengine.v1.FightRequest.cat_b:type_name -> catforge.gameengine.v1.CatState
+	30, // 35: catforge.gameengine.v1.FightResponse.turns:type_name -> catforge.gameengine.v1.FightTurn
+	13, // 36: catforge.gameengine.v1.ProgressRequest.cat:type_name -> catforge.gameengine.v1.CatState
+	13, // 37: catforge.gameengine.v1.ProgressResponse.cat:type_name -> catforge.gameengine.v1.CatState
+	33, // 38: catforge.gameengine.v1.GameEngineService.Progress:input_type -> catforge.gameengine.v1.ProgressRequest
+	11, // 39: catforge.gameengine.v1.GameEngineService.Train:input_type -> catforge.gameengine.v1.TrainRequest
+	17, // 40: catforge.gameengine.v1.GameEngineService.Expedition:input_type -> catforge.gameengine.v1.ExpeditionRequest
+	25, // 41: catforge.gameengine.v1.GameEngineService.ResolveYardEvent:input_type -> catforge.gameengine.v1.ResolveYardEventRequest
+	29, // 42: catforge.gameengine.v1.GameEngineService.Fight:input_type -> catforge.gameengine.v1.FightRequest
+	34, // 43: catforge.gameengine.v1.GameEngineService.Progress:output_type -> catforge.gameengine.v1.ProgressResponse
+	12, // 44: catforge.gameengine.v1.GameEngineService.Train:output_type -> catforge.gameengine.v1.TrainResponse
+	19, // 45: catforge.gameengine.v1.GameEngineService.Expedition:output_type -> catforge.gameengine.v1.ExpeditionResponse
+	27, // 46: catforge.gameengine.v1.GameEngineService.ResolveYardEvent:output_type -> catforge.gameengine.v1.ResolveYardEventResponse
+	31, // 47: catforge.gameengine.v1.GameEngineService.Fight:output_type -> catforge.gameengine.v1.FightResponse
+	43, // [43:48] is the sub-list for method output_type
+	38, // [38:43] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_gameengine_v1_game_engine_proto_init() }
@@ -2684,8 +3128,8 @@ func file_gameengine_v1_game_engine_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gameengine_v1_game_engine_proto_rawDesc), len(file_gameengine_v1_game_engine_proto_rawDesc)),
-			NumEnums:      10,
-			NumMessages:   21,
+			NumEnums:      11,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

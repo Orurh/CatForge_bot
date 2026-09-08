@@ -1,0 +1,55 @@
+logging {
+  level = "warn"
+}
+
+discovery.docker "catforge" {
+  host = "unix:///var/run/docker.sock"
+  refresh_interval = "15s"
+  filter {
+    name = "label"
+    values = ["catforge.logs=true", "com.docker.compose.project=" + sys.env("COMPOSE_PROJECT_NAME")]
+  }
+}
+
+discovery.relabel "catforge" {
+  targets = discovery.docker.catforge.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label = "service"
+  }
+  rule {
+    target_label = "application"
+    replacement = "catforge"
+  }
+}
+
+loki.source.docker "catforge" {
+  host = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.catforge.output
+  forward_to = [loki.process.catforge.receiver]
+}
+
+loki.process "catforge" {
+  stage.json {
+    expressions = { level = "level" }
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+  // Defense in depth for credential-shaped strings in third-party error logs.
+  stage.replace {
+    expression = "bot[0-9]+:[A-Za-z0-9_-]+"
+    replace = "bot[REDACTED]"
+  }
+  stage.replace {
+    expression = "sk-[A-Za-z0-9_-]{16,}"
+    replace = "[REDACTED]"
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

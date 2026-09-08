@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"catforge/internal/app"
 	"catforge/internal/domain"
@@ -147,6 +148,40 @@ func TestPersonalCreationAndSettingsStayPrivateInGroups(t *testing.T) {
 	}
 }
 
+func TestLegacyGameplayCallbacksStayDisabled(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{
+		CBMenuExp, CBExpeditionRefresh, CBExpeditionChoosePrefix + "alley", CBExpeditionDoPrefix + "alley:easy",
+		CBCollectionUpgradePrefix + "old-item", CBBestiary,
+	} {
+		if !legacyCallbackDisabled(action) {
+			t.Fatalf("legacy callback %q is enabled", action)
+		}
+	}
+	if legacyCallbackDisabled(CBTrainDo) || legacyCallbackDisabled(CBMenuFight) {
+		t.Fatal("active MVP callback classified as legacy")
+	}
+}
+
+func TestYardSettingsStatusExplainsHowToEnableFeatures(t *testing.T) {
+	t.Parallel()
+	text := formatYardSettings(&domain.Yard{
+		ID: 9, Name: "тест котов", HumorMode: domain.HumorNormal, MaxAutoMessagesDay: 2, FightsEnabled: true,
+	}, time.Unix(1_000, 0))
+	for _, expected := range []string{
+		"Автономные реплики: off",
+		"/yardsettings auto on | off",
+		"/yardsettings banter on | off",
+		"/yardsettings fights on | off",
+		"/quiet 24h",
+		"/quiet off",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("settings status %q misses %q", text, expected)
+		}
+	}
+}
+
 type renameCats struct {
 	cat     *domain.Cat
 	newName string
@@ -167,7 +202,11 @@ func (r *renameCats) SetName(_ context.Context, _ int64, name string) (*domain.C
 	return &updated, nil
 }
 
-type renameUsers struct{ saved app.PendingInput }
+type renameUsers struct {
+	saved        app.PendingInput
+	dailyAllowed bool
+	dailyCalls   int
+}
 
 func (r *renameUsers) EnsureUser(context.Context, int64) (int64, error) { return 1, nil }
 func (r *renameUsers) GetPendingAction(context.Context, int64) (string, error) {
@@ -182,6 +221,42 @@ func (r *renameUsers) SavePendingInput(_ context.Context, input app.PendingInput
 	return nil
 }
 func (r *renameUsers) ClearPendingInput(context.Context, int64, int64) error { return nil }
+func (r *renameUsers) ClaimDailyCommand(context.Context, int64, int64, string, time.Time) (bool, error) {
+	r.dailyCalls++
+	return r.dailyAllowed, nil
+}
+
+func TestGroupProfileHonorsDailyLimit(t *testing.T) {
+	t.Parallel()
+	var sent, markup string
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		var payload struct {
+			Text   string          `json:"text"`
+			Markup json.RawMessage `json:"reply_markup"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Errorf("decode Telegram payload: %v", err)
+		}
+		sent = payload.Text
+		markup = string(payload.Markup)
+		return jsonResponse(`{"ok":true,"result":{"message_id":700}}`), nil
+	})}
+	users := &renameUsers{dailyAllowed: false}
+	cats := &renameCats{cat: &domain.Cat{ID: 10, Name: "Барсик"}}
+	sender := NewSender("test", logx.Nop())
+	sender.apiBaseURL = "http://telegram.test"
+	sender.http = client
+	router := NewRouter(&app.App{Users: users, Profile: app.NewProfileService(cats)}, sender, "", "TryToGreat_bot", "", logx.Nop())
+	router.handlePersonalCommand(context.Background(), &tgCtx{
+		userID: 1, chatID: -100, chatType: "supergroup", now: time.Now(),
+	}, "/profile", "", nil)
+	if users.dailyCalls != 1 || !strings.Contains(sent, "уже показывали сегодня") {
+		t.Fatalf("daily calls/text = %d/%q", users.dailyCalls, sent)
+	}
+	if !strings.Contains(markup, "https://t.me/TryToGreat_bot") {
+		t.Fatal("private chat link missing:", markup)
+	}
+}
 
 func TestGroupNameCommandRenamesCatDirectly(t *testing.T) {
 	t.Parallel()

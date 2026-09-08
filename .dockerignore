@@ -9,3 +9,9 @@ catforge-bot-all-code.txt
 engine_cpp/build
 deploy/certs
 *.log
+
+backups
+*.dump
+
+.monitoring-secrets/
+.codex-bridge/

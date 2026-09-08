@@ -87,6 +87,10 @@ func load() {
 }
 
 func validateItem(item domain.ItemDefinition) error {
+	cap := map[domain.ItemRarity]int{domain.ItemCommon: 1, domain.ItemRare: 2, domain.ItemEpic: 3}[item.Rarity]
+	if item.TrainingCritBonusPercent < 0 || item.TrainingCritBonusPercent > cap {
+		return errors.New("invalid training crit bonus for rarity")
+	}
 	if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Name) == "" {
 		return errors.New("id and name are required")
 	}
@@ -102,6 +106,21 @@ func validateItem(item domain.ItemDefinition) error {
 	stats := item.StatsAtLevel(1)
 	if stats.HP < 0 || stats.ATK < 0 || stats.DEF < 0 || stats.SPD < 0 || stats == (domain.StatDelta{}) {
 		return errors.New("base stats must contain a positive bonus")
+	}
+	n := 0
+	for _, v := range []int{item.FelineBonus.ClawsTenthMM, item.FelineBonus.WeightGrams, item.FelineBonus.TailMM, item.FelineBonus.WhiskerSpanMM} {
+		if v < 0 {
+			return errors.New("negative physical bonus")
+		}
+		if v > 0 {
+			n++
+		}
+	}
+	if n > 1 {
+		return errors.New("items allow at most one physical bonus")
+	}
+	if item.EffectID == "" || item.Ability == "" {
+		return errors.New("item capability is required")
 	}
 	return nil
 }

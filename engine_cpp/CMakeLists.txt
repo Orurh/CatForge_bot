@@ -54,3 +54,8 @@ add_executable(catforge_engine_tests tests/game_engine_test.cpp)
 target_link_libraries(catforge_engine_tests PRIVATE catforge_engine_core)
 target_compile_options(catforge_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-missing-field-initializers)
 add_test(NAME catforge_engine_tests COMMAND catforge_engine_tests)
+
+add_executable(catforge_feline_tests tests/feline_progression_test.cpp)
+target_link_libraries(catforge_feline_tests PRIVATE catforge_engine_core)
+target_compile_options(catforge_feline_tests PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-missing-field-initializers)
+add_test(NAME catforge_feline_tests COMMAND catforge_feline_tests)

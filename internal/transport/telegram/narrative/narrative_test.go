@@ -24,7 +24,7 @@ func TestHuntStoryIsDeterministicAndTraitSpecific(t *testing.T) {
 func TestHuntStoryHasRareAbsurdVariant(t *testing.T) {
 	t.Parallel()
 	story := HuntStory(domain.EncounterPigeon, "sleepy", 0)
-	if !strings.Contains(story, "шаурм") && !strings.Contains(story, "психологически") {
+	if !strings.Contains(story, "шаурм") && !strings.Contains(story, "психологически") && !strings.Contains(story, "сосиск") {
 		t.Fatalf("absurd suffix is missing: %q", story)
 	}
 }

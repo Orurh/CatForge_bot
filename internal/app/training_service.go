@@ -55,11 +55,12 @@ func (s *TrainingService) Train(
 			return nil, domain.TrainResult{}, ai.Generation{}, err
 		}
 		out, err := s.engine.Train(ctx, gameengine.TrainingInput{
-			RulesVersion:   gameengine.CurrentRulesVersion,
-			ContentVersion: gameengine.CurrentContentVersion,
-			Cat:            *current,
-			Now:            now,
-			Random:         random,
+			RulesVersion:             gameengine.CurrentRulesVersion,
+			ContentVersion:           gameengine.CurrentContentVersion,
+			Cat:                      *current,
+			Now:                      now,
+			Random:                   random,
+			TrainingCritBonusPercent: current.TrainingCritBonusPercent,
 		})
 		if err != nil {
 			return nil, domain.TrainResult{}, ai.Generation{}, err
@@ -83,17 +84,18 @@ func (s *TrainingService) Train(
 	if sourceChatType != "" && sourceChatType != "private" {
 		targetChatID = sourceChatID
 	}
-	generation, rivalName, rivalry := s.generateNarrative(ctx, userID, sourceChatID, targetChatID, cat, res)
+	generation, rivalName, rivalry, yardID := s.generateNarrative(ctx, userID, sourceChatID, targetChatID, cat, res)
 
 	if s.events != nil {
 		baseKey := fmt.Sprintf("user:%d:cat:%d:state:%d", userID, cat.ID, cat.StateVersion)
 		energyNow := domain.RegenEnergy(cat.Energy, cat.EnergyUpdatedAt, now)
 		_ = s.events.Publish(ctx, GameEvent{
 			DedupeKey: baseKey + ":trained", Kind: GameEventCatTrained,
-			UserID: userID, CatID: cat.ID, OccurredAt: now,
+			UserID: userID, CatID: cat.ID, YardID: yardID, OccurredAt: now,
 			RulesVersion: gameengine.CurrentRulesVersion, ContentVersion: gameengine.CurrentContentVersion,
 			PayloadVersion: GameEventPayloadVersion, Notable: res.Crit,
 			Payload: CatTrainedPayload{
+				LootItemID: cat.LootItemID, ProgressionFacts: cat.ProgressionFacts, EnergyUpdatedAt: cat.EnergyUpdatedAt,
 				TargetChatID: targetChatID, TelegramID: telegramID, CatName: cat.Name,
 				Breed: cat.Breed, Trait: cat.Trait, Energy: energyNow, Level: cat.Level, Result: res,
 				Narrative: generation.Text, RivalName: rivalName, Rivalry: rivalry,
@@ -117,9 +119,13 @@ func (s *TrainingService) Train(
 	return cat, res, generation, nil
 }
 
-func (s *TrainingService) generateNarrative(ctx context.Context, userID, sourceChatID, targetChatID int64, cat *domain.Cat, result domain.TrainResult) (ai.Generation, string, int) {
-	if s.voice == nil || cat == nil || result.Outcome != domain.TrainingOK {
-		return ai.Generation{}, "", 0
+func (s *TrainingService) generateNarrative(ctx context.Context, userID, sourceChatID, targetChatID int64, cat *domain.Cat, result domain.TrainResult) (ai.Generation, string, int, int64) {
+	if cat == nil {
+		return ai.Generation{}, "", 0, 0
+	}
+	rivalName, rivalry, yardID, relationships := s.relationshipContext(ctx, cat.ID, sourceChatID, targetChatID)
+	if s.voice == nil || result.Outcome != domain.TrainingOK || !trainingNarrativeWorthy(result, rivalry) {
+		return ai.Generation{}, rivalName, rivalry, yardID
 	}
 	allowed := true
 	if s.quota != nil {
@@ -128,7 +134,7 @@ func (s *TrainingService) generateNarrative(ctx context.Context, userID, sourceC
 			ctx, userID, sourceChatID, s.clock.Now(), requestedAIUserHourlyLimit, requestedAIChatHourlyLimit,
 		)
 		if err != nil || !allowed {
-			return ai.Generation{}, "", 0
+			return ai.Generation{}, "", 0, yardID
 		}
 	}
 	personality := &domain.CatPersonality{
@@ -139,18 +145,17 @@ func (s *TrainingService) generateNarrative(ctx context.Context, userID, sourceC
 			personality = stored
 		}
 	}
-	rivalName, rivalry, yardID := s.strongestRival(ctx, cat.ID, sourceChatID, targetChatID)
 	request := ai.GenerationRequest{
 		YardID: yardID,
 		Cat: ai.CatContext{
 			ID: cat.ID, Name: cat.Name, Breed: cat.Breed, Trait: personality.Trait, SpeechStyle: personality.SpeechStyle,
 		},
-		HumorMode: personality.HumorMode,
+		HumorMode:     personality.HumorMode,
+		Relationships: relationships,
 		EventFacts: []string{
 			"encounter=" + strconv.Quote(string(result.Encounter)),
 			"energy_cost=" + strconv.Itoa(result.EnergyCost),
 			"xp_gain=" + strconv.FormatInt(result.XPGain, 10),
-			"coins_gain=" + strconv.FormatInt(result.CoinsGain, 10),
 			"critical=" + strconv.FormatBool(result.Crit),
 			"level=" + strconv.Itoa(cat.Level),
 			"levels_gained=" + strconv.Itoa(result.LeveledUp),
@@ -163,16 +168,21 @@ func (s *TrainingService) generateNarrative(ctx context.Context, userID, sourceC
 			RivalName: rivalName, Rivalry: rivalry,
 		},
 	}
+	request.EventFacts = append(request.EventFacts, cat.ProgressionFacts...)
 	generation, err := s.voice.GenerateTrainingNarrative(ctx, request)
 	if err != nil {
-		return ai.Generation{}, rivalName, rivalry
+		return ai.Generation{}, rivalName, rivalry, yardID
 	}
-	return generation, rivalName, rivalry
+	return generation, rivalName, rivalry, yardID
 }
 
-func (s *TrainingService) strongestRival(ctx context.Context, catID, sourceChatID, targetChatID int64) (string, int, int64) {
+func trainingNarrativeWorthy(result domain.TrainResult, rivalry int) bool {
+	return result.Crit || result.LeveledUp > 0 || rivalry >= 5
+}
+
+func (s *TrainingService) relationshipContext(ctx context.Context, catID, sourceChatID, targetChatID int64) (string, int, int64, []ai.RelationshipContext) {
 	if s.yards == nil {
-		return "", 0, 0
+		return "", 0, 0, nil
 	}
 	chatID := sourceChatID
 	if targetChatID != 0 {
@@ -180,11 +190,11 @@ func (s *TrainingService) strongestRival(ctx context.Context, catID, sourceChatI
 	}
 	yard, err := s.yards.GetByTelegramChatID(ctx, chatID)
 	if err != nil || yard == nil {
-		return "", 0, 0
+		return "", 0, 0, nil
 	}
 	relationships, err := s.yards.ListRelationships(ctx, yard.ID)
 	if err != nil {
-		return "", 0, yard.ID
+		return "", 0, yard.ID, nil
 	}
 	var bestName string
 	bestRivalry := 0
@@ -205,5 +215,5 @@ func (s *TrainingService) strongestRival(ctx context.Context, catID, sourceChatI
 			bestName, bestRivalry, bestCatID = otherName, relationship.Rivalry, otherID
 		}
 	}
-	return bestName, bestRivalry, yard.ID
+	return bestName, bestRivalry, yard.ID, relationshipContextsForCat(catID, relationships, maxAIRelationships)
 }

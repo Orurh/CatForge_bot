@@ -1,6 +1,7 @@
 package gameengine
 
 import (
+	"reflect"
 	"testing"
 
 	"catforge/internal/domain"
@@ -25,8 +26,9 @@ func TestExpeditionResultFromProtoMapsRareEnemy(t *testing.T) {
 func TestCatProtoRoundTrip(t *testing.T) {
 	t.Parallel()
 	want := domain.Cat{ID: 1, UserID: 2, StateVersion: 3, Name: "Мур", Breed: domain.BreedSiamese, Trait: "sleepy", Level: 4, XP: 55, Coins: 12, Energy: 80, HPBase: 40, ATKBase: 20, DEFBase: 18, SPDBase: 25}
+	want.Feline = want.PhysicalStats()
 	got := catFromProto(catToProto(want))
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cat round trip = %+v, want %+v", got, want)
 	}
 }
@@ -45,19 +47,34 @@ func TestTrainingResultFromProtoMapsCoinReward(t *testing.T) {
 func TestYardEventResultFromProto(t *testing.T) {
 	t.Parallel()
 	got := yardEventResultFromProto(&gameenginev1.ResolveYardEventResponse{
-		Success: true, TeamScore: 41, TargetScore: 34, FishTotal: 20, SecretFound: true, StrategyBonus: 6,
+		Success: true, OutcomeTier: gameenginev1.YardEventOutcomeTier_YARD_EVENT_OUTCOME_TIER_EXCEPTIONAL,
+		TeamScore: 41, TargetScore: 34, YardScore: 20, XpGain: 30, SecretFound: true, StrategyBonus: 6,
 		Participants: []*gameenginev1.YardEventParticipantResult{{
 			CatId: 9, Choice: gameenginev1.YardEventChoice_YARD_EVENT_CHOICE_SCOUT,
-			Contribution: 15, FishReward: 7, Mvp: true,
+			Contribution: 15, Mvp: true,
 		}},
 		RelationshipEffects: []*gameenginev1.YardRelationshipEffect{{
 			CatAId: 9, CatBId: 10, FriendshipDelta: 1, RespectDelta: 1,
 		}},
 	})
-	if !got.Success || got.TeamScore != 41 || len(got.Participants) != 1 ||
+	if got.OutcomeTier != domain.YardOutcomeExceptional || got.YardScore != 20 || got.XPGain != 30 || got.TeamScore != 41 || len(got.Participants) != 1 ||
 		got.Participants[0].Choice != domain.YardChoiceScout || !got.Participants[0].MVP ||
 		len(got.RelationshipEffects) != 1 || got.RelationshipEffects[0].RespectDelta != 1 {
 		t.Fatalf("yard event result mapping = %+v", got)
+	}
+}
+
+func TestYardEventTypeToProtoMapsAllTemplates(t *testing.T) {
+	t.Parallel()
+	tests := map[domain.YardEventType]gameenginev1.YardEventType{
+		domain.YardEventFishTruck: gameenginev1.YardEventType_YARD_EVENT_TYPE_FISH_TRUCK,
+		domain.YardEventBigDog:    gameenginev1.YardEventType_YARD_EVENT_TYPE_BIG_DOG,
+		domain.YardEventBigBox:    gameenginev1.YardEventType_YARD_EVENT_TYPE_BIG_BOX,
+	}
+	for eventType, want := range tests {
+		if got := yardEventTypeToProto(eventType); got != want {
+			t.Errorf("yardEventTypeToProto(%q) = %v, want %v", eventType, got, want)
+		}
 	}
 }
 

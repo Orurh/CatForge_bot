@@ -1,47 +1,188 @@
 {
-  "command.start": ["Открыть CatForge"],
-  "command.profile": ["Профиль кота"],
-  "command.train": ["Тренировать кота"],
-  "command.name": ["Переименовать кота"],
-  "command.reset": ["Удалить кота и прогресс"],
-  "command.askcat": ["Спросить своего кота"],
-  "command.cat": ["Ответить котом на сообщение"],
-  "command.autospeak": ["Автономные реплики кота"],
-  "command.humor": ["Настроить юмор кота"],
-  "command.yard": ["Состояние Двора"],
-  "command.event": ["Событие Двора"],
-  "command.fight": ["Выйти на арену"],
-  "command.yardsettings": ["Настройки Двора"],
-  "command.quiet": ["Режим тишины Двора"],
-
-  "button.starter.maine_coon": ["Мейн-кун (HP)"],
-  "button.starter.siamese": ["Сиам (SPD)"],
-  "button.starter.british": ["Британец (DEF)"],
-  "button.starter.bengal": ["Бенгал (ATK)"],
-  "button.train": ["🐾 Тренироваться"],
-  "button.profile": ["👤 Профиль"],
-  "button.yard": ["🏘 Двор"],
-  "button.fight": ["⚔️ Подраться"],
-  "button.askcat": ["🗣 Спросить кота"],
-  "button.name": ["✏️ Имя"],
-  "button.autospeak": ["🗣 Реплики"],
-  "button.humor": ["😼 Юмор"],
-  "button.reset": ["♻️ Удалить кота"],
-  "button.refresh": ["🔄 Обновить"],
-  "button.back": ["⬅️ Назад"],
-  "button.cancel": ["❌ Отмена"],
-  "button.reset_confirm": ["✅ Да, удалить кота"],
-
-  "help.fight": ["⚔️ Напиши /fight, чтобы выйти на арену. Бот сам найдёт ждущего соперника. Повторная /fight уберёт твоего кота из очереди."],
-  "help.askcat": ["🗣 Напиши вопрос после команды: /askcat стоит ли мне сегодня работать?"],
-  "help.yard_private": ["🏘 Двор живёт в групповой переписке. Добавь туда бота и используй /yard."],
-  "help.personal_private": ["🔒 Создание кота и персональные настройки доступны только в личном чате с ботом."],
-  "callback.personal_private": ["Персональные настройки открываются только в личном чате с ботом."],
-  "feature.disabled.legacy_expedition": ["Экспедиции временно скрыты: текущий MVP сосредоточен на тренировках, событиях Двора и драках."],
-  "feature.disabled.items": ["Коллекция и бестиарий временно скрыты в текущем MVP."],
-  "callback.not_owner": ["Это меню другого кота. Открой /start для своего."],
-  "callback.unknown": ["Это действие больше не поддерживается. Открой /start."],
-  "menu.home": ["Дом кота:"],
-  "menu.choose_starter": ["🐱 Выбери кота"],
-  "menu.no_cat": ["Сначала выбери кота через /start."]
+  "command.start": [
+    "Открыть CatForge"
+  ],
+  "command.profile": [
+    "Профиль кота"
+  ],
+  "command.train": [
+    "Тренировать кота"
+  ],
+  "command.name": [
+    "Переименовать кота"
+  ],
+  "command.reset": [
+    "Удалить кота и прогресс"
+  ],
+  "command.askcat": [
+    "Спросить своего кота"
+  ],
+  "command.cat": [
+    "Ответить котом на сообщение"
+  ],
+  "command.autospeak": [
+    "Автономные реплики кота"
+  ],
+  "command.humor": [
+    "Настроить юмор кота"
+  ],
+  "command.yard": [
+    "Состояние Двора"
+  ],
+  "command.event": [
+    "Событие Двора"
+  ],
+  "command.fight": [
+    "Выйти на арену"
+  ],
+  "command.week": [
+    "Итоги недели"
+  ],
+  "command.yardsettings": [
+    "Настройки Двора"
+  ],
+  "command.quiet": [
+    "Режим тишины Двора"
+  ],
+  "button.starter.maine_coon": [
+    "Мейн-кун (Вес, Хвост)"
+  ],
+  "button.starter.siamese": [
+    "Сиам (Хвост, Усы)"
+  ],
+  "button.starter.british": [
+    "Британец (Вес, Усы)"
+  ],
+  "button.starter.bengal": [
+    "Бенгал (Когти, Хвост)"
+  ],
+  "button.train": [
+    "🐾 Тренироваться"
+  ],
+  "button.profile": [
+    "👤 Профиль"
+  ],
+  "button.yard": [
+    "🏘 Двор"
+  ],
+  "button.fight": [
+    "⚔️ Подраться"
+  ],
+  "button.fight.revenge": [
+    "😾 Реванш"
+  ],
+  "button.askcat": [
+    "🗣 Спросить кота"
+  ],
+  "button.name": [
+    "✏️ Имя"
+  ],
+  "button.autospeak": [
+    "🗣 Реплики"
+  ],
+  "button.humor": [
+    "😼 Юмор"
+  ],
+  "button.reset": [
+    "♻️ Удалить кота"
+  ],
+  "button.refresh": [
+    "🔄 Обновить"
+  ],
+  "button.back": [
+    "⬅️ Назад"
+  ],
+  "button.cancel": [
+    "❌ Отмена"
+  ],
+  "button.reset_confirm": [
+    "✅ Да, удалить кота"
+  ],
+  "help.fight": [
+    "⚔️ Напиши /fight, чтобы выйти на арену. Бот сам найдёт ждущего соперника. Повторная /fight уберёт твоего кота из очереди."
+  ],
+  "help.askcat": [
+    "🗣 Напиши вопрос после команды: /askcat стоит ли мне сегодня работать?"
+  ],
+  "help.yard_private": [
+    "🏘 Двор живёт в групповой переписке. Добавь туда бота и используй /yard."
+  ],
+  "help.personal_private": [
+    "🔒 Создание кота и персональные настройки доступны только в личном чате с ботом."
+  ],
+  "profile.group.daily_limit": [
+    "Публичный профиль этого кота уже показывали сегодня. Полная карточка всегда доступна в личке."
+  ],
+  "profile.group.error": [
+    "Профиль сейчас не открылся. Попробуй немного позже."
+  ],
+  "callback.personal_private": [
+    "Персональные настройки открываются только в личном чате с ботом."
+  ],
+  "feature.disabled.legacy_expedition": [
+    "Экспедиции временно скрыты: текущий MVP сосредоточен на тренировках, событиях Двора и драках."
+  ],
+  "feature.disabled.items": [
+    "Коллекция и бестиарий временно скрыты в текущем MVP."
+  ],
+  "callback.not_owner": [
+    "Это меню другого кота. Открой /start для своего."
+  ],
+  "callback.unknown": [
+    "Это действие больше не поддерживается. Открой /start."
+  ],
+  "menu.home": [
+    "Дом кота:"
+  ],
+  "menu.choose_starter": [
+    "🐱 Выбери кота"
+  ],
+  "menu.no_cat": [
+    "Сначала выбери кота через /start."
+  ],
+  "yard.settings.status": [
+    "⚙️ Двор «{{.YardName}}»\nАвтономные реплики: {{.Auto}}\nЛимит: {{.Limit}}/день\nКот-к-коту: {{.Banter}}\nДраки: {{.Fights}}\nЮмор: {{.Humor}}\nТишина: {{.Quiet}}"
+  ],
+  "yard.settings.controls": [
+    "Как менять:\n🗣 Реплики: /yardsettings auto on | off\n🐈‍⬛ Перепалки: /yardsettings banter on | off\n⚔️ Драки: /yardsettings fights on | off\n🔢 Лимит: /yardsettings limit 0 | 1 | 2\n😼 Юмор: /yardsettings humor normal | bold\n🔇 Тишина на сутки: /quiet 24h\n🔊 Снять тишину: /quiet off"
+  ],
+  "yard.settings.usage": [
+    "Не понял настройку.\n\n🗣 /yardsettings auto on | off\n🐈‍⬛ /yardsettings banter on | off\n⚔️ /yardsettings fights on | off\n🔢 /yardsettings limit 0 | 1 | 2\n😼 /yardsettings humor normal | bold\n🔇 /quiet 24h | off"
+  ],
+  "yard.settings.value.on": [
+    "on"
+  ],
+  "yard.settings.value.off": [
+    "off"
+  ],
+  "yard.settings.quiet.until": [
+    "до {{.Until}}"
+  ],
+  "yard.settings.error.no_yard": [
+    "Сначала создай Двор командой /yard."
+  ],
+  "yard.settings.error.save": [
+    "Не удалось сохранить настройки Двора."
+  ],
+  "yard.settings.updated": [
+    "✅ Настройки обновлены."
+  ],
+  "yard.settings.quiet.usage": [
+    "Использование: /quiet 24h, /quiet off или /quiet status"
+  ],
+  "yard.settings.error.quiet": [
+    "Не удалось изменить режим тишины."
+  ],
+  "yard.settings.error.admin_check": [
+    "Не удалось проверить права администратора."
+  ],
+  "yard.settings.error.admin_only": [
+    "Эту настройку может менять только администратор группы."
+  ],
+  "fight.disabled": [
+    "Драки в этом Дворе отключены администратором."
+  ],
+  "command.support": [
+    "Поддержать CatForge Звёздами"
+  ]
 }

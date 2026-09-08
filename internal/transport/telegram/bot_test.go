@@ -116,12 +116,12 @@ func TestRegisterCommandsSetsPersonalGroupAndAdminScopes(t *testing.T) {
 		t.Fatalf("scopes = %v", scopes)
 	}
 	group := commandsByScope["all_group_chats"]
-	for _, expected := range []string{"start", "profile", "train", "name", "askcat", "cat", "yard", "event", "fight"} {
+	for _, expected := range []string{"start", "profile", "train", "name", "askcat", "cat", "yard", "event", "fight", "week"} {
 		if !hasBotCommand(group, expected) {
 			t.Errorf("group commands = %+v, missing /%s", group, expected)
 		}
 	}
-	for _, hidden := range []string{"reset", "autospeak", "humor", "week", "expedition", "collection", "bestiary", "bind", "unbind", "yardsettings", "quiet"} {
+	for _, hidden := range []string{"reset", "autospeak", "humor", "expedition", "collection", "bestiary", "bind", "unbind", "yardsettings", "quiet"} {
 		if hasBotCommand(group, hidden) {
 			t.Errorf("group commands unexpectedly expose /%s", hidden)
 		}
@@ -139,4 +139,30 @@ func hasBotCommand(commands []BotCommand, command string) bool {
 		}
 	}
 	return false
+}
+
+func TestPollingPrioritizesCheckoutWithoutSkippingEarlierUpdate(t *testing.T) {
+	b := New(nil, "test", "", "", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	b.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if err := req.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(req.Form.Get("allowed_updates"), "pre_checkout_query") {
+			t.Fatal("checkout updates disabled")
+		}
+		return jsonResponse(`{"ok":true,"result":[{"update_id":1},{"update_id":2,"pre_checkout_query":{"id":"q"}},{"update_id":3}]}`), nil
+	})}
+	var order []int
+	b.Poll(ctx, func(_ context.Context, u Update) error {
+		order = append(order, u.UpdateID)
+		if len(order) == 3 {
+			cancel()
+		}
+		return nil
+	})
+	if len(order) != 3 || order[0] != 2 || order[1] != 1 || order[2] != 3 {
+		t.Fatalf("priority/order %v", order)
+	}
 }

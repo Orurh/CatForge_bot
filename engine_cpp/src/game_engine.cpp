@@ -21,39 +21,14 @@ std::int32_t RegenEnergy(const CatState &cat, const std::int64_t now) {
       static_cast<std::int64_t>(cat.energy) + regenerated, kEnergyMax));
 }
 
-std::pair<double, std::int32_t>
-TrainingEfficiency(const std::optional<std::int64_t> last_train_at,
-                   const std::int64_t now) {
-  if (!last_train_at.has_value()) {
-    return {1.0, 100};
-  }
-  const auto delta = now - *last_train_at;
-  if (delta <= 0) {
-    return {kMinimumEfficiency, 50};
-  }
-
-  double efficiency = 1.0;
-  if (delta < kEfficiencyWindowNanos) {
-    const auto ratio = static_cast<double>(delta) /
-                       static_cast<double>(kEfficiencyWindowNanos);
-    efficiency = kMinimumEfficiency + (1.0 - kMinimumEfficiency) * ratio;
-    efficiency = std::max(efficiency, kMinimumEfficiency);
-  }
-  return {efficiency, static_cast<std::int32_t>(efficiency * 100.0 + 0.5)};
-}
-
 std::int32_t TrainingEnergyCost(const std::int32_t energy) {
   if (energy < kTrainingMinEnergy) {
     return 0;
   }
-  return std::clamp(energy - kTrainingEnergyReserve, kTrainingMinEnergy,
-                    kTrainingMaxEnergyCost);
+  return std::min(energy, kEnergyMax);
 }
 
 Encounter EncounterFromRoll(const std::int32_t roll) {
-  if (roll < 10) {
-    return Encounter::kBigRat;
-  }
   if (roll < 45) {
     return Encounter::kMicePack;
   }
@@ -91,8 +66,11 @@ void Validate(const TrainingInput &input) {
   }
   if (input.random.energy_cost_roll < 0 ||
       input.random.energy_cost_roll >= 13 || input.random.xp_gain_roll < 0 ||
-      input.random.xp_gain_roll >= 17 || input.random.encounter_roll < 0 ||
+      input.random.xp_gain_roll >= 51 || input.random.encounter_roll < 0 ||
       input.random.encounter_roll >= 100 ||
+      input.random.training_crit_roll < 0 || input.random.training_crit_roll >= 100 ||
+      input.training_crit_bonus_percent < 0 ||
+      input.random.training_loot_roll < 0 || input.random.training_loot_roll >= 10000 ||
       input.random.flavor_roll >= (1U << 16U)) {
     throw std::invalid_argument("random roll outside its allowed range");
   }
@@ -240,6 +218,11 @@ void ApplyLevelUps(CatState &cat, std::int32_t &levels, StatDelta &gained) {
     cat.atk_base += delta.atk;
     cat.def_base += delta.def;
     cat.spd_base += delta.spd;
+    const auto physical = FelineGrowth(cat.breed);
+    cat.feline.claws_tenth_mm += physical.claws_tenth_mm;
+    cat.feline.weight_grams += physical.weight_grams;
+    cat.feline.tail_mm += physical.tail_mm;
+    cat.feline.whisker_span_mm += physical.whisker_span_mm;
     gained.hp += delta.hp;
     gained.atk += delta.atk;
     gained.def += delta.def;
@@ -297,11 +280,115 @@ LootRoll RollLoot(const ExpeditionDifficulty difficulty,
 
 } // namespace
 
+FelineStats BaseFelineStats(const std::string &breed) {
+  if (breed == "maine_coon")
+    return {100, 6000, 320, 180};
+  if (breed == "siamese")
+    return {100, 4000, 400, 300};
+  if (breed == "british")
+    return {100, 5500, 250, 300};
+  if (breed == "bengal")
+    return {150, 4500, 350, 200};
+  return {100, 5000, 300, 300};
+}
+FelineStats FelineGrowth(const std::string &breed) {
+  if (breed == "maine_coon")
+    return {5, 300, 20, 20};
+  if (breed == "siamese")
+    return {5, 100, 30, 30};
+  if (breed == "british")
+    return {5, 300, 10, 30};
+  if (breed == "bengal")
+    return {15, 100, 30, 10};
+  return {10, 200, 20, 20};
+}
+ProgressOutput Progress(const ProgressInput &input) {
+  if (input.cat.level < 1 || input.xp_gain < 0 || input.xp_gain > 1000000000LL)
+    throw std::invalid_argument("invalid progression input");
+  if (input.source != "training" && input.source != "yard" &&
+      input.source != "arena")
+    throw std::invalid_argument("invalid progression source");
+  if (input.source == "training" && (input.energy_spent < 50 || input.energy_spent > 100))
+    throw std::invalid_argument("training progression requires energy spent in 50..100");
+  if (input.source == "training" && (input.training_loot_roll < 0 || input.training_loot_roll >= 10000))
+    throw std::invalid_argument("training loot roll outside 0..9999");
+  ProgressOutput output{.cat = input.cat};
+  auto &cat = output.cat;
+  if (cat.feline.weight_grams <= 0)
+    cat.feline = BaseFelineStats(cat.breed);
+  auto gain = input.xp_gain;
+  if (input.source == "arena" && input.outcome_tier == "win")
+    gain = cat.level * 5LL;
+  if (input.source == "arena" && input.outcome_tier == "loss")
+    gain = cat.level * 3LL;
+  cat.xp += gain;
+  std::int32_t levels = 0;
+  StatDelta gained;
+  ApplyLevelUps(cat, levels, gained);
+  if (levels > 0)
+    output.facts.push_back("new_personal_record=level:" +
+                           std::to_string(cat.level));
+  for (const auto &[level, id] :
+       std::vector<std::pair<int, std::string>>{{2, "first_item"},
+                                                {3, "arena_unlocked"},
+                                                {5, "equipment_slot_2"},
+                                                {8, "equipment_slot_3"}})
+    if (input.cat.level < level && cat.level >= level)
+      output.facts.push_back(id);
+  if (input.source == "arena" || cat.level < 2)
+    return output;
+  SplitMix64 rng(input.seed);
+  const auto guaranteed = !cat.first_item_granted;
+  // Basis points: 50 energy -> 100 bp, 75 -> 150 bp, 100 -> 200 bp.
+  auto chance_bp = input.source == "training"         ? input.energy_spent * 2
+                : input.outcome_tier == "exceptional" ? 8000
+                : input.outcome_tier == "success"     ? 4000
+                : input.outcome_tier == "partial"     ? 2000
+                                                      : 500;
+  if (input.source == "yard" && input.secret_found)
+    chance_bp = std::min(9500, chance_bp + 1500);
+  const auto roll_bp = input.source == "training" ? static_cast<unsigned>(input.training_loot_roll) : (rng.Next() % 100U) * 100U;
+  if (!guaranteed && roll_bp >= static_cast<unsigned>(chance_bp))
+    return output;
+  if (guaranteed)
+    output.loot_item_id = "rat_tooth";
+  else {
+    const std::vector<std::string> common{"string_collar",
+                                          "antenna_shard", "pigeon_feather"};
+    const std::vector<std::string> rare{"rat_tooth", "janitor_glove", "sour_cream_lid",
+                                        "dog_tag", "lynx_claw", "furry_collar"};
+    const std::vector<std::string> epic{"shoelace", "old_lynx_eye",
+                                        "cone_of_fate"};
+    const auto roll = rng.Next() % 100U;
+    const auto epic_chance = cat.level >= 8 && input.source == "yard"
+                                 ? (input.secret_found                    ? 20U
+                                    : input.outcome_tier == "exceptional" ? 15U
+                                                                          : 5U)
+                                 : 0U;
+    const auto rare_chance =
+        input.source == "yard" ? (cat.level >= 5 ? 35U : 5U) : 0U;
+    const auto &pool = roll < epic_chance                 ? epic
+                       : roll < epic_chance + rare_chance ? rare
+                                                          : common;
+    output.loot_item_id = pool[rng.Next() % pool.size()];
+  }
+  cat.first_item_granted = true;
+  output.facts.push_back("new_item=" + output.loot_item_id);
+  return output;
+}
+
 TrainingOutput Train(const TrainingInput &input) {
   Validate(input);
   auto cat = input.cat;
   cat.energy = RegenEnergy(cat, input.now_unix_nanos);
-  cat.energy_updated_at_unix_nanos = input.now_unix_nanos;
+  // Preserve incomplete regen intervals on both refusals and successful training.
+  // At the cap there is no banked regeneration time.
+  if (!cat.energy_updated_at_unix_nanos.has_value() || cat.energy >= kEnergyMax) {
+    cat.energy_updated_at_unix_nanos = input.now_unix_nanos;
+  } else if (input.now_unix_nanos > *cat.energy_updated_at_unix_nanos) {
+    *cat.energy_updated_at_unix_nanos +=
+        ((input.now_unix_nanos - *cat.energy_updated_at_unix_nanos) / kEnergyRegenIntervalNanos) * kEnergyRegenIntervalNanos;
+  }
 
   const auto cost = TrainingEnergyCost(cat.energy);
   if (cost == 0) {
@@ -312,50 +399,43 @@ TrainingOutput Train(const TrainingInput &input) {
     };
   }
 
-  auto gain_base =
-      static_cast<double>(cost * 3 / 2 + input.random.xp_gain_roll) +
-      static_cast<double>(cat.level / 2);
-  const auto [efficiency, efficiency_percent] =
-      TrainingEfficiency(cat.last_train_at_unix_nanos, input.now_unix_nanos);
-  const auto encounter = EncounterFromRoll(input.random.encounter_roll);
-  const auto critical = encounter == Encounter::kBigRat;
-  if (critical) {
-    gain_base *= 2.0;
-  }
-  const auto gain = std::max<std::int64_t>(
-      static_cast<std::int64_t>(gain_base * efficiency), 1);
-  const auto coins_gain = std::max<std::int64_t>(cost / 10, 1);
+  const auto training_crit_chance = 5 + std::min(input.training_crit_bonus_percent, 5);
+  const auto critical = input.random.training_crit_roll < training_crit_chance;
+  const auto encounter = critical ? Encounter::kBigRat : EncounterFromRoll(input.random.encounter_roll);
+  // Integer rounding to nearest XP, once at the end. Crit adds 100% of BASE,
+  // independently of the uniform 75..125% random multiplier and previous actions.
+  const auto gain = (static_cast<std::int64_t>(cost) * 3 *
+      (75 + input.random.xp_gain_roll + (critical ? 100 : 0)) + 100) / 200;
+  // Coins belong to legacy Expedition; active training never mints them.
+  const std::int64_t coins_gain = 0;
 
   cat.energy -= cost;
   cat.xp += gain;
   cat.coins += coins_gain;
   std::int32_t levels_gained = 0;
   StatDelta stats_gained;
-  while (cat.xp >= static_cast<std::int64_t>(cat.level) * 100) {
-    cat.xp -= static_cast<std::int64_t>(cat.level) * 100;
-    ++cat.level;
-    ++levels_gained;
-    const auto delta = LevelUpDelta(cat.breed);
-    cat.hp_base += delta.hp;
-    cat.atk_base += delta.atk;
-    cat.def_base += delta.def;
-    cat.spd_base += delta.spd;
-    stats_gained.hp += delta.hp;
-    stats_gained.atk += delta.atk;
-    stats_gained.def += delta.def;
-    stats_gained.spd += delta.spd;
-  }
+  if (cat.feline.weight_grams <= 0)
+    cat.feline = BaseFelineStats(cat.breed);
+  ApplyLevelUps(cat, levels_gained, stats_gained);
+  auto reward = Progress(
+      {.cat = cat, .seed = input.random.flavor_roll, .source = "training", .energy_spent = cost, .training_loot_roll = input.random.training_loot_roll});
+  cat = reward.cat;
+  if (levels_gained > 0)
+    reward.facts.push_back("new_personal_record=level:" +
+                           std::to_string(cat.level));
   cat.last_train_at_unix_nanos = input.now_unix_nanos;
 
   return {
       .cat = std::move(cat),
       .result =
           {
+              .loot_item_id = reward.loot_item_id,
+              .progression_facts = reward.facts,
               .outcome = TrainingOutcome::kOk,
               .xp_gain = gain,
               .energy_cost = cost,
               .crit = critical,
-              .efficiency_percent = efficiency_percent,
+              .efficiency_percent = 100,
               .levels_gained = levels_gained,
               .stats_gained = stats_gained,
               .encounter = encounter,
@@ -470,6 +550,69 @@ ExpeditionOutput Expedition(const ExpeditionInput &input) {
                      .loot = loot}};
 }
 
+FightResult FightPhysical(const FightInput &input) {
+  const auto &a = input.cat_a;
+  const auto &b = input.cat_b;
+  auto valid = [](const CatState &c) {
+    return c.id > 0 && c.level > 0 && c.feline.weight_grams > 0 &&
+           c.feline.claws_tenth_mm > 0 && c.feline.tail_mm > 0 &&
+           c.feline.whisker_span_mm > 0;
+  };
+  if (!valid(a) || !valid(b) || a.id == b.id)
+    throw std::invalid_argument("invalid physical fighter");
+  SplitMix64 rng(input.seed);
+  auto health = [](const CatState &c) {
+    return 10 * (200 + c.feline.weight_grams / 100);
+  };
+  auto hp_a = health(a), hp_b = health(b);
+  std::vector<FightTurn> turns;
+  std::int32_t rounds = 0;
+  auto strike = [&](const CatState &attacker, const CatState &defender,
+                    std::int32_t &hp, int round) {
+    const auto tail = defender.feline.tail_mm / 10;
+    const auto dodge = std::clamp(tail * 10000 / (200 + tail), 0, 5500);
+    const auto whiskers = attacker.feline.whisker_span_mm / 10;
+    const auto critical = rng.Next() % 100U < 8U;
+    auto damage =
+        (200 + attacker.feline.claws_tenth_mm / 5) * (200 + whiskers) / 200;
+    damage = damage * (85 + static_cast<std::int32_t>(rng.Next() % 31U)) / 100;
+    if (critical)
+      damage = damage * 3 / 2;
+    if (rng.Next() % 10000U < static_cast<unsigned>(dodge))
+      damage = 0;
+    hp = std::max(0, hp - damage);
+    turns.push_back({.round = round,
+                     .attacker_cat_id = attacker.id,
+                     .defender_cat_id = defender.id,
+                     .damage = damage,
+                     .crit = critical && damage > 0,
+                     .defender_hp_after = hp});
+  };
+  for (int round = 1; round <= 200 && hp_a > 0 && hp_b > 0; ++round) {
+    rounds = round;
+    const auto initiative =
+        std::clamp(50 + (a.feline.tail_mm - b.feline.tail_mm) / 40, 35, 65);
+    const auto first = rng.Next() % 100U < static_cast<unsigned>(initiative);
+    if (first) {
+      strike(a, b, hp_b, round);
+      if (hp_b > 0)
+        strike(b, a, hp_a, round);
+    } else {
+      strike(b, a, hp_a, round);
+      if (hp_a > 0)
+        strike(a, b, hp_b, round);
+    }
+  }
+  if (hp_a > 0 && hp_b > 0)
+    throw std::invalid_argument("fight exceeded round limit");
+  return {.winner_cat_id = hp_a > 0 ? a.id : b.id,
+          .loser_cat_id = hp_a > 0 ? b.id : a.id,
+          .rounds = rounds,
+          .final_hp_a = hp_a,
+          .final_hp_b = hp_b,
+          .turns = std::move(turns)};
+}
+
 FightResult Fight(const FightInput &input) {
   if (input.rules_version != kCurrentRulesVersion) {
     throw std::invalid_argument("unsupported rules version");
@@ -477,6 +620,9 @@ FightResult Fight(const FightInput &input) {
   if (input.content_version != kCurrentContentVersion) {
     throw std::invalid_argument("unsupported content version");
   }
+  if (input.cat_a.feline.weight_grams > 0 ||
+      input.cat_b.feline.weight_grams > 0)
+    return FightPhysical(input);
   const auto valid_cat = [](const CatState &cat) {
     return cat.id > 0 && cat.level > 0 && cat.hp_base > 0 && cat.atk_base > 0 &&
            cat.def_base >= 0 && cat.spd_base >= 0;
@@ -487,25 +633,111 @@ FightResult Fight(const FightInput &input) {
   }
 
   SplitMix64 rng(input.seed);
+  const auto combat_rating = [](const CatState &cat) {
+    // The weights intentionally keep all four starter breeds close at equal
+    // level while letting every trained stat contribute to PvP strength.
+    if (cat.feline.weight_grams > 0) {
+      return cat.feline.weight_grams / 100 + cat.feline.claws_tenth_mm / 5 +
+             cat.feline.tail_mm / 10 + cat.feline.whisker_span_mm / 10;
+    }
+    return cat.hp_base + cat.atk_base * 2 + cat.def_base + cat.spd_base;
+  };
+  constexpr std::int32_t kFormRange = 180;
+  const auto form_a = static_cast<std::int32_t>(rng.Next() % (kFormRange + 1U));
+  const auto form_b = static_cast<std::int32_t>(rng.Next() % (kFormRange + 1U));
+  const auto reading = [](const CatState &c) {
+    return c.feline.weight_grams > 0 ? c.feline.whisker_span_mm / 10
+                                     : c.spd_base;
+  };
+  const auto agility = [](const CatState &c) {
+    return c.feline.weight_grams > 0 ? c.feline.tail_mm / 10 : c.spd_base;
+  };
+  const auto crit_chance_a =
+      std::clamp(8 + (reading(input.cat_a) - reading(input.cat_b)) / 10, 5, 15);
+  const auto crit_chance_b =
+      std::clamp(8 + (reading(input.cat_b) - reading(input.cat_a)) / 10, 5, 15);
+  const auto decisive_crit_a =
+      rng.Next() % 100U < static_cast<std::uint64_t>(crit_chance_a);
+  const auto decisive_crit_b =
+      rng.Next() % 100U < static_cast<std::uint64_t>(crit_chance_b);
+  constexpr std::int32_t kDecisiveCritBonus = 12;
+  const auto score_a = combat_rating(input.cat_a) + form_a +
+                       (decisive_crit_a ? kDecisiveCritBonus : 0);
+  const auto score_b = combat_rating(input.cat_b) + form_b +
+                       (decisive_crit_b ? kDecisiveCritBonus : 0);
+  auto a_wins = score_a > score_b;
+  if (score_a == score_b) {
+    a_wins = rng.Next() % 2U == 0U;
+  }
+
+  const auto initiative_chance_a =
+      std::clamp(50 + (agility(input.cat_a) - agility(input.cat_b)), 30, 70);
+  const auto a_starts =
+      rng.Next() % 100U < static_cast<std::uint64_t>(initiative_chance_a);
+  const auto rounds = 4 + static_cast<std::int32_t>(rng.Next() % 4U);
+  const auto winner_starts = a_starts == a_wins;
+  auto attacks_by_a = a_wins ? rounds : rounds - (winner_starts ? 1 : 0);
+  auto attacks_by_b = a_wins ? rounds - (winner_starts ? 1 : 0) : rounds;
+  const auto initial_attacks_by_a = attacks_by_a;
+  const auto initial_attacks_by_b = attacks_by_b;
+
+  const auto margin = std::abs(score_a - score_b);
+  const auto winner_percent = std::clamp(
+      15 + margin / 4 + static_cast<std::int32_t>(rng.Next() % 21U), 15, 65);
+  auto final_hp_a =
+      a_wins ? std::max(1, input.cat_a.hp_base * winner_percent / 100) : 0;
+  auto final_hp_b =
+      a_wins ? 0 : std::max(1, input.cat_b.hp_base * winner_percent / 100);
+  // Every logged strike deals at least one point, including deliberately
+  // weak attacks by the eventual loser.
+  if (a_wins) {
+    final_hp_a =
+        std::min(final_hp_a, std::max(1, input.cat_a.hp_base - attacks_by_b));
+  } else {
+    final_hp_b =
+        std::min(final_hp_b, std::max(1, input.cat_b.hp_base - attacks_by_a));
+  }
+
   auto hp_a = input.cat_a.hp_base;
   auto hp_b = input.cat_b.hp_base;
-  auto a_starts = input.cat_a.spd_base > input.cat_b.spd_base;
-  if (input.cat_a.spd_base == input.cat_b.spd_base) {
-    a_starts = rng.Next() % 2U == 0U;
-  }
+  auto damage_to_a_remaining = hp_a - final_hp_a;
+  auto damage_to_b_remaining = hp_b - final_hp_b;
 
   std::vector<FightTurn> turns;
   turns.reserve(32);
-  std::int32_t rounds = 0;
   const auto strike = [&](const bool a_attacks, const std::int32_t round) {
     const auto &attacker = a_attacks ? input.cat_a : input.cat_b;
     const auto &defender = a_attacks ? input.cat_b : input.cat_a;
     auto &defender_hp = a_attacks ? hp_b : hp_a;
-    const auto crit_chance =
-        std::clamp(7 + (attacker.spd_base - defender.spd_base) / 3, 5, 20);
-    const auto [damage, critical] =
-        RollDamage(attacker.atk_base, defender.def_base, crit_chance, rng);
+    auto &remaining = a_attacks ? damage_to_b_remaining : damage_to_a_remaining;
+    auto &hits_left = a_attacks ? attacks_by_a : attacks_by_b;
+    if (hits_left <= 0) {
+      return;
+    }
+    const auto crit_chance = a_attacks ? crit_chance_a : crit_chance_b;
+    const auto decisive_crit = a_attacks ? decisive_crit_a : decisive_crit_b;
+    const auto first_strike =
+        hits_left == (a_attacks ? initial_attacks_by_a : initial_attacks_by_b);
+    const auto critical =
+        (decisive_crit && first_strike) ||
+        rng.Next() % 100U < static_cast<std::uint64_t>(crit_chance);
+    auto damage = remaining;
+    if (hits_left > 1) {
+      const auto average = std::max(1, remaining / hits_left);
+      const auto spread = std::max(1, average / 3);
+      const auto jitter =
+          static_cast<std::int32_t>(
+              rng.Next() % static_cast<std::uint64_t>(spread * 2 + 1)) -
+          spread;
+      damage = average + jitter;
+      if (critical) {
+        damage += std::max(1, average / 2);
+      }
+      damage = std::clamp(damage, 1, remaining - (hits_left - 1));
+    }
     defender_hp = std::max(0, defender_hp - damage);
+    remaining -= damage;
+    --hits_left;
     turns.push_back({.round = round,
                      .attacker_cat_id = attacker.id,
                      .defender_cat_id = defender.id,
@@ -514,19 +746,15 @@ FightResult Fight(const FightInput &input) {
                      .defender_hp_after = defender_hp});
   };
 
-  while (hp_a > 0 && hp_b > 0 && rounds < 100) {
-    ++rounds;
-    strike(a_starts, rounds);
+  for (std::int32_t round = 1; round <= rounds && hp_a > 0 && hp_b > 0;
+       ++round) {
+    strike(a_starts, round);
     if (hp_a == 0 || hp_b == 0) {
       break;
     }
-    strike(!a_starts, rounds);
+    strike(!a_starts, round);
   }
 
-  bool a_wins = hp_a > hp_b;
-  if (hp_a == hp_b) {
-    a_wins = rng.Next() % 2U == 0U;
-  }
   return {.winner_cat_id = a_wins ? input.cat_a.id : input.cat_b.id,
           .loser_cat_id = a_wins ? input.cat_b.id : input.cat_a.id,
           .rounds = rounds,
@@ -539,10 +767,18 @@ YardEventResult ResolveYardEvent(const YardEventInput &input) {
   if (input.rules_version != kCurrentRulesVersion) {
     throw std::invalid_argument("unsupported rules version");
   }
-  if (input.content_version != kCurrentContentVersion) {
+  if (input.content_version != kCurrentContentVersion &&
+      input.content_version != 4U && input.content_version != 3U &&
+      input.content_version != 2U) {
     throw std::invalid_argument("unsupported content version");
   }
-  if (input.event_type != YardEventType::kFishTruck) {
+  const auto legacy_fish_truck = input.content_version == 2U;
+  if (legacy_fish_truck && input.event_type != YardEventType::kFishTruck) {
+    throw std::invalid_argument("legacy content supports only fish truck");
+  }
+  if (input.event_type != YardEventType::kFishTruck &&
+      input.event_type != YardEventType::kBigDog &&
+      input.event_type != YardEventType::kBigBox) {
     throw std::invalid_argument("unsupported yard event type");
   }
   if (input.participants.size() > 100U) {
@@ -573,29 +809,86 @@ YardEventResult ResolveYardEvent(const YardEventInput &input) {
   std::vector<YardEventParticipantResult> outcomes;
   outcomes.reserve(participants.size());
   for (const auto &cat : participants) {
+    const auto physical = cat.feline.weight_grams > 0;
+    const auto claws = physical ? cat.feline.claws_tenth_mm / 5 : cat.atk;
+    const auto weight = physical ? cat.feline.weight_grams / 100 : cat.hp;
+    const auto tail = physical ? cat.feline.tail_mm / 10 : cat.spd;
+    const auto whiskers = physical ? cat.feline.whisker_span_mm / 10 : cat.def;
     std::int32_t role_stat = 0;
     switch (cat.choice) {
     case YardEventChoice::kSteal:
-      role_stat = cat.atk;
+      if (input.event_type == YardEventType::kBigDog) {
+        role_stat = (claws + weight) / 2;
+      } else if (input.event_type == YardEventType::kBigBox) {
+        role_stat = (weight + tail) / 2;
+      } else if (legacy_fish_truck) {
+        role_stat = claws;
+      } else {
+        role_stat = (claws + tail) / 2;
+      }
       ++steal_count;
       break;
     case YardEventChoice::kDistract:
-      role_stat = (cat.hp + cat.def) / 2;
+      if (input.event_type == YardEventType::kBigDog) {
+        role_stat = (whiskers + tail) / 2;
+      } else {
+        role_stat = (weight + whiskers) / 2;
+      }
       ++distract_count;
       break;
     case YardEventChoice::kScout:
-      role_stat = cat.spd;
+      role_stat = input.event_type == YardEventType::kBigBox
+                      ? (claws + tail) / 2
+                      : (tail + whiskers) / 2;
       ++scout_count;
       break;
     case YardEventChoice::kUnspecified:
       break;
     }
+    const auto has = [&](const std::string &id) {
+      return std::find(cat.effects.begin(), cat.effects.end(), id) !=
+             cat.effects.end();
+    };
+    auto capability_bonus = 0;
+    if (!cat.special_action.empty()) {
+      const auto &id = cat.special_action;
+      bool allowed =
+          (id == "service_entry" &&
+           input.event_type == YardEventType::kFishTruck &&
+           cat.choice == YardEventChoice::kSteal && has(id)) ||
+          (id == "bird_knowledge" &&
+           input.event_type == YardEventType::kFishTruck &&
+           cat.choice == YardEventChoice::kScout && has(id)) ||
+          (id == "dog_identity" && input.event_type == YardEventType::kBigDog &&
+           cat.choice == YardEventChoice::kDistract && has(id)) ||
+          (id == "foresight" && input.event_type == YardEventType::kBigDog &&
+           cat.choice == YardEventChoice::kScout && has(id)) ||
+          (id == "parkour" && input.event_type == YardEventType::kBigBox &&
+           cat.choice == YardEventChoice::kSteal && has(id)) ||
+          (id == "ledge" && input.event_type == YardEventType::kBigBox &&
+           cat.choice == YardEventChoice::kScout && cat.feline.tail_mm >= 340);
+      if (!allowed)
+        throw std::invalid_argument("special action requirements not met");
+      capability_bonus = 12;
+    }
+    if ((has("gnaw") && input.event_type == YardEventType::kBigBox &&
+         cat.choice == YardEventChoice::kSteal) ||
+        (has("steady") && cat.choice == YardEventChoice::kDistract) ||
+        (has("lure") && cat.choice == YardEventChoice::kDistract) ||
+        (has("probe") && cat.choice == YardEventChoice::kScout) ||
+        (has("intimidate") && input.event_type == YardEventType::kBigDog &&
+         cat.choice == YardEventChoice::kSteal) ||
+        (has("cushion") && input.event_type == YardEventType::kBigBox))
+      capability_bonus += 3;
     const auto contribution = std::max<std::int32_t>(
-        1, cat.level * 2 + role_stat / 4 +
+        1, capability_bonus + cat.level * 2 + role_stat / 4 +
                static_cast<std::int32_t>(rng.Next() % 7U));
-    outcomes.push_back({.cat_id = cat.cat_id,
-                        .choice = cat.choice,
-                        .contribution = contribution});
+    outcomes.push_back(
+        {.cat_id = cat.cat_id,
+         .choice = cat.choice,
+         .contribution = contribution,
+         .item_effect_triggered =
+             capability_bonus > 0 && cat.special_action != "ledge"});
   }
 
   const auto coordinated_pairs = std::min(steal_count, distract_count);
@@ -605,16 +898,60 @@ YardEventResult ResolveYardEvent(const YardEventInput &input) {
     team_score += outcome.contribution;
   }
   const auto participant_count = static_cast<std::int32_t>(outcomes.size());
-  const auto target_score = 7 + participant_count * 9;
-  const auto success = team_score >= target_score;
+  auto target_score = participant_count * 20;
+  if (input.event_type == YardEventType::kBigDog) {
+    target_score = target_score * 105 / 100;
+  } else if (input.event_type == YardEventType::kBigBox) {
+    target_score = target_score * 95 / 100;
+  }
+  target_score = std::max<std::int32_t>(1, target_score);
 
   if (outcomes.empty()) {
-    return {.success = false,
+    return {.outcome_tier = YardEventOutcomeTier::kFailure,
             .team_score = 0,
             .target_score = target_score,
-            .fish_total = 0,
+            .yard_score = 0,
+            .xp_gain = 0,
             .secret_found = false,
             .strategy_bonus = 0};
+  }
+
+  auto outcome_tier = YardEventOutcomeTier::kFailure;
+  const auto performance = team_score * 100 / target_score;
+  if (performance >= 150) {
+    outcome_tier = YardEventOutcomeTier::kExceptional;
+  } else if (performance >= 100) {
+    outcome_tier = YardEventOutcomeTier::kSuccess;
+  } else if (performance >= 65) {
+    outcome_tier = YardEventOutcomeTier::kPartial;
+  }
+  if (outcome_tier == YardEventOutcomeTier::kFailure) {
+    const auto rescue = std::any_of(
+        participants.begin(), participants.end(),
+        [](const auto &cat) { return cat.special_action == "foresight"; });
+    const auto fate = std::any_of(
+        participants.begin(), participants.end(), [](const auto &cat) {
+          return std::find(cat.effects.begin(), cat.effects.end(), "fate") !=
+                 cat.effects.end();
+        });
+    const auto fate_triggered = !rescue && fate && rng.Next() % 100U < 10U;
+    if (rescue || fate_triggered) {
+      outcome_tier = YardEventOutcomeTier::kPartial;
+      if (fate_triggered)
+        for (std::size_t i = 0; i < participants.size(); ++i) {
+          if (std::find(participants[i].effects.begin(),
+                        participants[i].effects.end(),
+                        "fate") != participants[i].effects.end())
+            outcomes[i].item_effect_triggered = true;
+        }
+    }
+  }
+  // An Event is a social mechanic: a solo cat still gets a story and XP, but
+  // can never turn it into a full team victory.
+  if (participant_count < 2 &&
+      (outcome_tier == YardEventOutcomeTier::kSuccess ||
+       outcome_tier == YardEventOutcomeTier::kExceptional)) {
+    outcome_tier = YardEventOutcomeTier::kPartial;
   }
 
   const auto scout_power = [&] {
@@ -631,11 +968,12 @@ YardEventResult ResolveYardEvent(const YardEventInput &input) {
   const auto secret_found =
       scout_count > 0 &&
       rng.Next() % 100U < static_cast<std::uint64_t>(secret_chance);
-  auto fish_total = success ? participant_count * 4 + 6 +
-                                  static_cast<std::int32_t>(rng.Next() % 5U)
-                            : participant_count;
-  if (secret_found) {
-    fish_total += 3;
+  auto yard_score = outcome_tier == YardEventOutcomeTier::kExceptional ? 14
+                    : outcome_tier == YardEventOutcomeTier::kSuccess   ? 10
+                    : outcome_tier == YardEventOutcomeTier::kPartial   ? 6
+                                                                       : 0;
+  if (secret_found && yard_score > 0) {
+    yard_score += 2;
   }
 
   const auto best =
@@ -646,15 +984,8 @@ YardEventResult ResolveYardEvent(const YardEventInput &input) {
                          }
                          return left.cat_id > right.cat_id;
                        });
-  const auto equal_share = fish_total / participant_count;
-  auto remainder = fish_total % participant_count;
   for (auto &outcome : outcomes) {
-    outcome.fish_reward = equal_share;
     outcome.mvp = outcome.cat_id == best->cat_id;
-    if (remainder > 0) {
-      ++outcome.fish_reward;
-      --remainder;
-    }
   }
 
   std::vector<YardRelationshipEffect> relationship_effects;
@@ -666,16 +997,24 @@ YardEventResult ResolveYardEvent(const YardEventInput &input) {
       relationship_effects.push_back(
           {.cat_a_id = a.cat_id,
            .cat_b_id = b.cat_id,
-           .friendship_delta = success ? 1 : 0,
+           .friendship_delta =
+               outcome_tier == YardEventOutcomeTier::kSuccess ||
+                       outcome_tier == YardEventOutcomeTier::kExceptional
+                   ? 1
+                   : 0,
            .rivalry_delta = a.choice == b.choice ? 1 : 0,
            .respect_delta = a.mvp || b.mvp ? 1 : 0});
     }
   }
 
-  return {.success = success,
+  return {.outcome_tier = outcome_tier,
           .team_score = team_score,
           .target_score = target_score,
-          .fish_total = fish_total,
+          .yard_score = yard_score,
+          .xp_gain = outcome_tier == YardEventOutcomeTier::kExceptional ? 40
+                     : outcome_tier == YardEventOutcomeTier::kSuccess   ? 30
+                     : outcome_tier == YardEventOutcomeTier::kPartial   ? 15
+                                                                        : 5,
           .secret_found = secret_found,
           .strategy_bonus = strategy_bonus,
           .participants = std::move(outcomes),

@@ -10,7 +10,7 @@ import (
 
 func FormatCollection(entries []app.CollectionEntry) string {
 	if len(entries) == 0 {
-		return "🎒 Коллекция\n\nПока пусто. Первый предмет гарантирован за первую победную экспедицию."
+		return "🎒 Коллекция\n\nПока пусто. Первый предмет гарантирован в тренировке или событии после Lv2."
 	}
 	lines := []string{"🎒 Коллекция", ""}
 	for _, entry := range entries {
@@ -25,21 +25,23 @@ func FormatCollection(entries []app.CollectionEntry) string {
 }
 
 func FormatItem(entry app.CollectionEntry, prefix string) string {
-	stats := entry.Definition.StatsAtLevel(entry.Owned.Level)
-	text := "🎒 " + entry.Definition.Name + "\n" +
-		"Редкость: " + rarityRU(entry.Definition.Rarity) + "\n" +
-		"Слот: " + itemSlotRU(entry.Definition.Slot) + "\n" +
-		"Уровень: " + strconv.Itoa(entry.Owned.Level) + "/" + strconv.Itoa(domain.ItemMaxLevel) + "\n" +
-		"Фрагменты: " + strconv.Itoa(entry.Owned.Fragments) + "\n" +
-		"Бонус: " + formatStatDelta(stats)
+	text := "🎒 " + entry.Definition.Name + "\n" + rarityRU(entry.Definition.Rarity) + " · ур. " + strconv.Itoa(entry.Owned.Level) + "\n\n" + entry.Definition.Ability
+	bonus := entry.Definition.PhysicalBonus(entry.Owned.Level)
+	switch {
+	case bonus.ClawsTenthMM > 0:
+		text += "\n🩸 Когти +" + tenths(bonus.ClawsTenthMM) + " мм"
+	case bonus.WeightGrams > 0:
+		text += "\n🐈 Вес +" + tenths(bonus.WeightGrams/100) + " кг"
+	case bonus.TailMM > 0:
+		text += "\n🐾 Хвост +" + tenths(bonus.TailMM) + " см"
+	case bonus.WhiskerSpanMM > 0:
+		text += "\n〰️ Усы +" + tenths(bonus.WhiskerSpanMM) + " см"
+	}
 	if entry.Owned.Equipped {
 		text += "\n\n✅ Сейчас надет"
 	}
-	if fragments, coins, ok := domain.UpgradeCost(entry.Owned.Level); ok {
-		text += "\n\nУлучшение: 🧩 " + strconv.Itoa(fragments) + " + 🪙 " + strconv.FormatInt(coins, 10)
-	} else {
-		text += "\n\n⭐ Максимальный уровень"
-	}
+	text += "\nПовторы усиливают предмет автоматически."
+
 	if strings.TrimSpace(prefix) != "" {
 		return prefix + "\n\n" + text
 	}

@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"bytes"
+	"catforge/internal/observability"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -44,20 +45,35 @@ func NewSender(token string, log logx.Logger) *Sender {
 }
 
 func (s *Sender) Text(ctx context.Context, chatID int64, text string) error {
-	return s.Call(ctx, "sendMessage", map[string]any{
+	_, err := s.TextResult(ctx, chatID, text)
+	return err
+}
+
+func (s *Sender) TextResult(ctx context.Context, chatID int64, text string) (int, error) {
+	var message Message
+	err := s.callResult(ctx, "sendMessage", map[string]any{
 		"chat_id": chatID,
 		"text":    text,
-	})
+	}, &message)
+	return message.MessageID, err
 }
 
 func (s *Sender) TextReply(ctx context.Context, chatID int64, replyToMessageID int, text string) error {
-	return s.Call(ctx, "sendMessage", map[string]any{
+	_, err := s.TextReplyResult(ctx, chatID, replyToMessageID, text)
+	return err
+}
+
+func (s *Sender) TextReplyResult(ctx context.Context, chatID int64, replyToMessageID int, text string) (int, error) {
+	var message Message
+	err := s.callResult(ctx, "sendMessage", map[string]any{
 		"chat_id": chatID,
 		"text":    text,
 		"reply_parameters": map[string]any{
-			"message_id": replyToMessageID,
+			"message_id":                  replyToMessageID,
+			"allow_sending_without_reply": true,
 		},
-	})
+	}, &message)
+	return message.MessageID, err
 }
 
 func (s *Sender) TextWithKeyboard(ctx context.Context, chatID int64, text string, kb any) error {
@@ -120,7 +136,9 @@ func (s *Sender) IsChatAdmin(ctx context.Context, chatID, telegramUserID int64) 
 	return member.Status == "creator" || member.Status == "administrator", nil
 }
 
-func (s *Sender) callResult(ctx context.Context, method string, payload map[string]any, result any) error {
+func (s *Sender) callResult(ctx context.Context, method string, payload map[string]any, result any) (resultErr error) {
+	started := time.Now()
+	defer func() { observability.Observe("telegram", "send", started, resultErr) }()
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("telegram api marshal error: method=%s err=%w", method, err)
@@ -206,7 +224,9 @@ func (s *Sender) EditMediaWithKeyboard(ctx context.Context, chatID int64, messag
 	})
 }
 
-func (s *Sender) callMultipart(ctx context.Context, method, photoURL string, fields map[string]string) error {
+func (s *Sender) callMultipart(ctx context.Context, method, photoURL string, fields map[string]string) (resultErr error) {
+	started := time.Now()
+	defer func() { observability.Observe("telegram", "send", started, resultErr) }()
 	parsed, err := url.Parse(photoURL)
 	if err != nil {
 		return fmt.Errorf("parse embedded photo path: %w", err)

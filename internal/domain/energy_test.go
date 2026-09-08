@@ -36,10 +36,10 @@ func TestTrainingEnergyCostUsesMostAvailableEnergy(t *testing.T) {
 		energy int
 		want   int
 	}{
-		{energy: 100, want: 90},
-		{energy: 75, want: 65},
-		{energy: 40, want: 30},
-		{energy: 25, want: 25},
+		{energy: 100, want: 100},
+		{energy: 75, want: 75},
+		{energy: 50, want: 50},
+		{energy: 49, want: 0},
 		{energy: 24, want: 0},
 	}
 	for _, test := range tests {
@@ -56,10 +56,27 @@ func TestTrainingEfficiency(t *testing.T) {
 	if _, got := TrainingEfficiency(time.Time{}, now); got != 100 {
 		t.Fatalf("first training efficiency = %d, want 100", got)
 	}
-	if _, got := TrainingEfficiency(now, now); got != 50 {
-		t.Fatalf("immediate training efficiency = %d, want 50", got)
+	if _, got := TrainingEfficiency(now, now); got != 100 {
+		t.Fatalf("immediate training efficiency = %d, want 100", got)
 	}
-	if _, got := TrainingEfficiency(now.Add(-TrainingEfficiencyWindow), now); got != 100 {
+	if _, got := TrainingEfficiency(now.Add(-time.Minute), now); got != 100 {
 		t.Fatalf("rested training efficiency = %d, want 100", got)
+	}
+}
+
+func TestEnergyWaitKeepsPartialInterval(t *testing.T) {
+	now := time.Unix(10000, 0)
+	for _, tt := range []struct {
+		energy, target int
+		elapsed, want  time.Duration
+	}{
+		{10, 50, 0, 320 * time.Minute}, {0, 50, 0, 400 * time.Minute}, {0, 100, 0, 800 * time.Minute},
+		{47, 100, 0, 424 * time.Minute}, {49, 50, 7 * time.Minute, time.Minute},
+		{48, 50, 15 * time.Minute, time.Minute}, {100, 100, 0, 0}, {74, 50, 0, 0},
+	} {
+		got := EnergyWait(tt.energy, now.Add(-tt.elapsed), now, tt.target)
+		if got != tt.want {
+			t.Errorf("%+v: got %v", tt, got)
+		}
 	}
 }

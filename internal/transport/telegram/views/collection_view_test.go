@@ -19,7 +19,7 @@ func TestCollectionAndItemViews(t *testing.T) {
 	collection := FormatCollection([]app.CollectionEntry{entry})
 	detail := FormatItem(entry, "")
 	profile := FormatProfileEquipment([]app.CollectionEntry{entry})
-	for text, want := range map[string]string{collection: "✅ Крысиный зуб", detail: "ATK +4", profile: "Крысиный зуб"} {
+	for text, want := range map[string]string{collection: "✅ Крысиный зуб", detail: "Прогрызть", profile: "Крысиный зуб"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("text %q does not contain %q", text, want)
 		}

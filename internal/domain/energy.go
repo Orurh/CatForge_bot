@@ -23,19 +23,28 @@ func RegenEnergy(cur int, updatedAt, now time.Time) int {
 	return n
 }
 
-// TrainingEnergyCost makes Training a single meaningful action instead of a
-// button that is optimal to spam. A rested cat keeps a small energy reserve;
-// a cat at the minimum threshold spends the full minimum amount.
+// TrainingEnergyCost spends the entire accumulated reserve once training is available.
 func TrainingEnergyCost(energy int) int {
 	if energy < TrainingMinEnergy {
 		return 0
 	}
-	cost := energy - TrainingEnergyReserve
-	if cost < TrainingMinEnergy {
-		return TrainingMinEnergy
+	return min(energy, EnergyMax)
+}
+
+// EnergyWait accounts for the unfinished regeneration interval, not just whole points.
+func EnergyWait(cur int, updatedAt, now time.Time, target int) time.Duration {
+	energy := RegenEnergy(cur, updatedAt, now)
+	if energy >= target {
+		return 0
 	}
-	if cost > TrainingMaxEnergyCost {
-		return TrainingMaxEnergyCost
+	wait := time.Duration(target-energy) * EnergyRegenInterval
+	if !updatedAt.IsZero() {
+		elapsed := now.Sub(updatedAt)
+		if elapsed >= 0 {
+			wait -= elapsed % EnergyRegenInterval
+		} else {
+			wait -= elapsed
+		}
 	}
-	return cost
+	return wait
 }

@@ -1,0 +1,119 @@
+rule_files:
+- alerts.yml
+evaluation_interval: 15s
+tests:
+- name: polling stalled with live process
+  interval: 1m
+  input_series:
+  - series: catforge_last_success_timestamp_seconds{component="telegram",operation="getUpdates",job="catforge",instance="bot:9091"}
+    values: 0+0x10
+  - series: catforge_telegram_polling_enabled{job="catforge",instance="bot:9091"}
+    values: 1+0x10
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: PollingStalled
+    exp_alerts:
+    - exp_labels:
+        component: telegram
+        operation: getUpdates
+        job: catforge
+        instance: bot:9091
+        severity: critical
+      exp_annotations:
+        summary: Telegram polling has no successful cycles
+        description: Check Telegram connectivity and duplicate bot instances. Idle
+          successful polls count as healthy.
+- name: idle successful polling is healthy
+  interval: 1m
+  input_series:
+  - series: catforge_last_success_timestamp_seconds{component="telegram",operation="getUpdates",job="catforge",instance="bot:9091"}
+    values: 0+60x10
+  - series: catforge_telegram_polling_enabled{job="catforge",instance="bot:9091"}
+    values: 1+0x10
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: PollingStalled
+    exp_alerts: []
+- name: webhook does not require polling
+  interval: 1m
+  input_series:
+  - series: catforge_last_success_timestamp_seconds{component="telegram",operation="getUpdates",job="catforge",instance="bot:9091"}
+    values: 0+0x10
+  - series: catforge_telegram_polling_enabled{job="catforge",instance="bot:9091"}
+    values: 0+0x10
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: PollingStalled
+    exp_alerts: []
+- name: dependency failures fire
+  interval: 1m
+  input_series:
+  - series: catforge_dependency_up{dependency="engine"}
+    values: 0+0x10
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: DependencyDown
+    exp_alerts:
+    - exp_labels:
+        dependency: engine
+        severity: critical
+      exp_annotations:
+        summary: engine is unavailable or incompatible
+        description: Check service logs and matching engine rules version.
+- name: absent backup fires
+  interval: 1m
+  input_series:
+  - series: catforge_backup_last_success_timestamp_seconds
+    values: 0+0x1600
+  alert_rule_test:
+  - eval_time: 26h
+    alertname: BackupStale
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+      exp_annotations:
+        summary: No database archive newer than 24 hours
+        description: Run scripts/backup_db.sh and check the backup scheduler. Archive
+          age does not prove offsite copy or restore validity.
+- name: procedural AI is not a failure
+  interval: 1m
+  input_series:
+  - series: catforge_ai_primary_enabled
+    values: 0+0x30
+  - series: catforge_operations_total{component="ai",operation="generate",outcome="procedural"}
+    values: 0+10x30
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: AIFallbackHigh
+    exp_alerts: []
+- name: primary provider degradation fires
+  interval: 1m
+  input_series:
+  - series: catforge_ai_primary_enabled
+    values: 1+0x30
+  - series: catforge_operations_total{component="ai",operation="generate",outcome="fallback"}
+    values: 0+10x30
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: AIFallbackHigh
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: AI fallback/error share exceeds 30%
+        description: Check provider availability and quotas. Procedural-only mode
+          is excluded.
+- name: quarantined payment raises durable alert
+  interval: 1m
+  input_series:
+  - series: catforge_payments_review_required
+    values: 1+0x5
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: PaymentNeedsReview
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+      exp_annotations:
+        summary: Payment receipt requires review
+        description: Inspect payments.review_reason and reconcile the Telegram receipt; do not delete financial records.

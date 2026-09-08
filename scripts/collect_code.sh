@@ -8,12 +8,16 @@ trap 'rm -f "${temporary}"' EXIT
 
 find "${project_root}" -type f \
   -not -path '*/.git/*' \
+  -not -path '*/.agents/*' \
+  -not -path '*/.codex/*' \
+  -not -path '*/backups/*' \
+  -not -path '*/.monitoring-secrets/*' \
   -not -path '*/engine_cpp/build/*' \
   -not -path '*/deploy/certs/*' \
   \( \
     -name '*.go' -o -name '*.mod' -o -name '*.sum' -o -name '*.md' -o \
     -name '*.yml' -o -name '*.yaml' -o -name '*.sql' -o -name '*.proto' -o \
-    -name '*.cpp' -o -name '*.hpp' -o -name '*.sh' -o -name '*.json' -o \
+    -name '*.alloy' -o -name '*.conf' -o -name '*.cpp' -o -name '*.hpp' -o -name '*.sh' -o -name '*.json' -o \
     -name 'Dockerfile' -o -name 'CMakeLists.txt' -o -name '.gitignore' -o \
     -name '.dockerignore' -o -name '.env.example' \
   \) -print0 | sort -z | while IFS= read -r -d '' file; do

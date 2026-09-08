@@ -1,5 +1,6 @@
 services:
   game-engine:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: engine_cpp/Dockerfile
@@ -7,6 +8,7 @@ services:
       - "50051"
 
   postgres:
+    restart: unless-stopped
     image: postgres:16
     env_file:
       - .env
@@ -23,6 +25,13 @@ services:
       retries: 30
 
   bot:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/bot", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     build: .
     env_file:
       - .env
@@ -33,7 +42,8 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}   # https://your-domain.tld
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
-      BOT_USERNAME: ${BOT_USERNAME} 
+      PAYMENT_SUPPORT_CONTACT: ${PAYMENT_SUPPORT_CONTACT:-}
+      BOT_USERNAME: ${BOT_USERNAME}
       WEBHOOK_PATH: ${WEBHOOK_PATH:-/tg/webhook}
       DATABASE_URL: ${DATABASE_URL}
       GAME_ENGINE_ADDR: ${GAME_ENGINE_ADDR:-game-engine:50051}
@@ -47,6 +57,7 @@ services:
       - "8080"
 
   nginx:
+    restart: unless-stopped
     image: nginx:1.27
     ports:
       - "80:80"

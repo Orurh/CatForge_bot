@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,4 +78,17 @@ func (r *UserRepo) ClearPendingInput(ctx context.Context, userID, chatID int64) 
 		DELETE FROM pending_inputs WHERE user_id = $1 AND telegram_chat_id = $2
 	`, userID, chatID)
 	return err
+}
+
+func (r *UserRepo) ClaimDailyCommand(ctx context.Context, userID, chatID int64, command string, now time.Time) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `
+		INSERT INTO command_daily_usage
+		(user_id, telegram_chat_id, command_name, usage_day, used_at)
+		VALUES ($1, $2, $3, $4::date, $5)
+		ON CONFLICT DO NOTHING
+	`, userID, chatID, command, now.Format("2006-01-02"), now)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }

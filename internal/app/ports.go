@@ -32,6 +32,7 @@ type UserRepository interface {
 	GetPendingInput(ctx context.Context, userID, chatID int64) (*PendingInput, error)
 	SavePendingInput(ctx context.Context, input PendingInput) error
 	ClearPendingInput(ctx context.Context, userID, chatID int64) error
+	ClaimDailyCommand(ctx context.Context, userID, chatID int64, command string, now time.Time) (bool, error)
 }
 
 type PendingInput struct {
@@ -61,6 +62,11 @@ type AIQuotaRepository interface {
 	AllowAIRequest(ctx context.Context, userID, chatID int64, now time.Time, userLimit, chatLimit int) (bool, error)
 }
 
+type CatMessageReferenceRepository interface {
+	Remember(ctx context.Context, chatID int64, messageID int, catID int64, expiresAt time.Time) error
+	Claim(ctx context.Context, chatID int64, messageID int, now time.Time) (*domain.CatMessageReference, bool, error)
+}
+
 type YardRepository interface {
 	EnsureAndJoin(ctx context.Context, telegramChatID int64, name string, userID, catID int64, now time.Time) (yard *domain.Yard, created, joined bool, err error)
 	GetByTelegramChatID(ctx context.Context, telegramChatID int64) (*domain.Yard, error)
@@ -68,11 +74,21 @@ type YardRepository interface {
 	ListMembers(ctx context.Context, yardID int64) ([]domain.YardMember, error)
 	ListRelationships(ctx context.Context, yardID int64) ([]domain.CatRelationship, error)
 	SaveSettings(ctx context.Context, yardID int64, settings domain.YardSettings, now time.Time) (*domain.Yard, error)
-	ClaimAutoMessageSlot(ctx context.Context, yardID int64, now time.Time, limit int) (bool, error)
+	ClaimAutoMessageSlot(ctx context.Context, yardID int64, now time.Time, limit int, kind domain.AutoMessageKind) (bool, error)
+}
+
+// IdleBanterYardRepository is implemented by persistent yard stores that can
+// select yards whose deterministic 24-48 hour banter window is due.
+type IdleBanterYardRepository interface {
+	ListIdleBanterCandidates(ctx context.Context, now, activeSince time.Time, limit int) ([]domain.Yard, error)
 }
 
 type YardEventRepository interface {
+	NextEventType(ctx context.Context, yardID int64) (domain.YardEventType, error)
 	StartOrGet(ctx context.Context, yardID int64, eventType domain.YardEventType, seed int64, startsAt, resolvesAt time.Time, contentVersion uint32) (event *domain.YardEvent, created bool, err error)
+	GetCurrentActive(ctx context.Context, telegramChatID int64) (*domain.YardEvent, error)
+	GetActive(ctx context.Context, telegramChatID, eventID int64) (*domain.YardEvent, error)
+	ListStartCandidates(ctx context.Context, now, activeSince time.Time, limit int) ([]domain.Yard, error)
 	SubmitChoice(ctx context.Context, telegramChatID, eventID, userID int64, choice domain.YardEventChoiceID, now time.Time) (saved domain.YardEventChoice, first bool, err error)
 	ChoiceCounts(ctx context.Context, eventID int64) (map[domain.YardEventChoiceID]int, error)
 	DueEventIDs(ctx context.Context, now time.Time, limit int) ([]int64, error)
@@ -82,8 +98,10 @@ type YardEventRepository interface {
 }
 
 type FightRepository interface {
-	ToggleQueue(ctx context.Context, yardID, userID, catID int64, now, expiresAt time.Time) (domain.FightQueueToggle, error)
-	SaveFight(ctx context.Context, record domain.FightRecord, result domain.FightResult, catAName, catBName string) (fightID int64, rivalry int, err error)
+	ToggleQueue(ctx context.Context, yardID, userID, catID int64, now, expiresAt time.Time, limits domain.FightLimits) (domain.FightQueueToggle, error)
+	GetRevenge(ctx context.Context, telegramChatID, sourceFightID, loserUserID int64, now time.Time, limits domain.FightLimits) (domain.FightRevenge, error)
+	SaveFight(ctx context.Context, record domain.FightRecord, result domain.FightResult, catAName, catBName string, limits domain.FightLimits) (domain.FightSaveResult, error)
+	CatStats(ctx context.Context, catID int64) (domain.ArenaStats, error)
 }
 
 type ItemRepository interface {

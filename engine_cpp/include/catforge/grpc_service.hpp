@@ -7,6 +7,9 @@ namespace catforge::engine {
 class GameEngineService final
     : public gameengine::v1::GameEngineService::Service {
 public:
+  grpc::Status Progress(grpc::ServerContext *,
+                        const gameengine::v1::ProgressRequest *,
+                        gameengine::v1::ProgressResponse *) override;
   grpc::Status Train(grpc::ServerContext *context,
                      const gameengine::v1::TrainRequest *request,
                      gameengine::v1::TrainResponse *response) override;

@@ -36,6 +36,31 @@ func TestForceReplyReturnsPromptMessageID(t *testing.T) {
 	}
 }
 
+func TestTextReplyResultReturnsMessageID(t *testing.T) {
+	t.Parallel()
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		var payload struct {
+			ChatID          int64          `json:"chat_id"`
+			Text            string         `json:"text"`
+			ReplyParameters map[string]any `json:"reply_parameters"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		if payload.ChatID != -100 || payload.Text != "Барсик ответил" || payload.ReplyParameters["message_id"] != float64(77) || payload.ReplyParameters["allow_sending_without_reply"] != true {
+			t.Errorf("unexpected reply payload: %+v", payload)
+		}
+		return jsonResponse(`{"ok":true,"result":{"message_id":88,"chat":{"id":-100}}}`), nil
+	})}
+	sender := NewSender("test-token", logx.Nop())
+	sender.apiBaseURL = "http://telegram.test"
+	sender.http = client
+	messageID, err := sender.TextReplyResult(context.Background(), -100, 77, "Барсик ответил")
+	if err != nil || messageID != 88 {
+		t.Fatalf("TextReplyResult() = %d, %v", messageID, err)
+	}
+}
+
 func TestPhotoWithKeyboardUploadsEmbeddedAsset(t *testing.T) {
 	t.Parallel()
 

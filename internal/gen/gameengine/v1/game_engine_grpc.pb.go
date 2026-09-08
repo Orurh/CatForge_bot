@@ -19,6 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	GameEngineService_Progress_FullMethodName         = "/catforge.gameengine.v1.GameEngineService/Progress"
 	GameEngineService_Train_FullMethodName            = "/catforge.gameengine.v1.GameEngineService/Train"
 	GameEngineService_Expedition_FullMethodName       = "/catforge.gameengine.v1.GameEngineService/Expedition"
 	GameEngineService_ResolveYardEvent_FullMethodName = "/catforge.gameengine.v1.GameEngineService/ResolveYardEvent"
@@ -29,6 +30,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GameEngineServiceClient interface {
+	Progress(ctx context.Context, in *ProgressRequest, opts ...grpc.CallOption) (*ProgressResponse, error)
 	Train(ctx context.Context, in *TrainRequest, opts ...grpc.CallOption) (*TrainResponse, error)
 	Expedition(ctx context.Context, in *ExpeditionRequest, opts ...grpc.CallOption) (*ExpeditionResponse, error)
 	ResolveYardEvent(ctx context.Context, in *ResolveYardEventRequest, opts ...grpc.CallOption) (*ResolveYardEventResponse, error)
@@ -41,6 +43,16 @@ type gameEngineServiceClient struct {
 
 func NewGameEngineServiceClient(cc grpc.ClientConnInterface) GameEngineServiceClient {
 	return &gameEngineServiceClient{cc}
+}
+
+func (c *gameEngineServiceClient) Progress(ctx context.Context, in *ProgressRequest, opts ...grpc.CallOption) (*ProgressResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProgressResponse)
+	err := c.cc.Invoke(ctx, GameEngineService_Progress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *gameEngineServiceClient) Train(ctx context.Context, in *TrainRequest, opts ...grpc.CallOption) (*TrainResponse, error) {
@@ -87,6 +99,7 @@ func (c *gameEngineServiceClient) Fight(ctx context.Context, in *FightRequest, o
 // All implementations must embed UnimplementedGameEngineServiceServer
 // for forward compatibility.
 type GameEngineServiceServer interface {
+	Progress(context.Context, *ProgressRequest) (*ProgressResponse, error)
 	Train(context.Context, *TrainRequest) (*TrainResponse, error)
 	Expedition(context.Context, *ExpeditionRequest) (*ExpeditionResponse, error)
 	ResolveYardEvent(context.Context, *ResolveYardEventRequest) (*ResolveYardEventResponse, error)
@@ -101,6 +114,9 @@ type GameEngineServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedGameEngineServiceServer struct{}
 
+func (UnimplementedGameEngineServiceServer) Progress(context.Context, *ProgressRequest) (*ProgressResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Progress not implemented")
+}
 func (UnimplementedGameEngineServiceServer) Train(context.Context, *TrainRequest) (*TrainResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Train not implemented")
 }
@@ -132,6 +148,24 @@ func RegisterGameEngineServiceServer(s grpc.ServiceRegistrar, srv GameEngineServ
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&GameEngineService_ServiceDesc, srv)
+}
+
+func _GameEngineService_Progress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProgressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GameEngineServiceServer).Progress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GameEngineService_Progress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GameEngineServiceServer).Progress(ctx, req.(*ProgressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _GameEngineService_Train_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -213,6 +247,10 @@ var GameEngineService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "catforge.gameengine.v1.GameEngineService",
 	HandlerType: (*GameEngineServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Progress",
+			Handler:    _GameEngineService_Progress_Handler,
+		},
 		{
 			MethodName: "Train",
 			Handler:    _GameEngineService_Train_Handler,

@@ -19,3 +19,19 @@
 существующих вариантах. `go test ./internal/gamecontent` проверяет JSON,
 дубликаты ключей, пустые массивы и синтаксис шаблонов. После редактирования
 контента бот нужно пересобрать: JSON встраивается в бинарник.
+
+Двухстрочные варианты `fallback.arena_banter.*` — это один компактный разговор:
+первая строка принадлежит проигравшему, вторая победителю. Не добавляйте к ним
+имена или маркеры: Telegram-слой сам подставляет породу, уровень и имя кота.
+Варианты `high_rivalry`, `friendship` и `respect` выбираются по уже сохранённым
+relationships пары. Эти числа меняют тон, но не игровой исход.
+
+То же разделение есть у `fallback.relationship_reply.*`,
+`fallback.event.relationship.*` и `fallback.autonomous.relationship.*`. В этих
+шаблонах доступны `{{.CatAName}}`, `{{.CatBName}}`, `{{.OtherCatName}}`,
+`{{.Friendship}}`, `{{.Rivalry}}` и `{{.Respect}}`.
+
+Однострочные `fallback.followup.normal.*` и `fallback.followup.bold.*` — ответы
+кота человеку, который reply'нул на его раннюю реплику. Ключ заканчивается
+на trait (`lazy`, `bully`, `philosopher`, `neat`, `sleepy` или `default`). Имя и префикс
+тоже добавляет Telegram-слой.

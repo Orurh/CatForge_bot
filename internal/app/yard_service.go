@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"catforge/internal/domain"
@@ -106,5 +107,22 @@ func (s *YardService) SaveSettings(ctx context.Context, telegramChatID int64, se
 	if err != nil {
 		return nil, err
 	}
-	return s.yards.SaveSettings(ctx, yard.ID, settings, s.clock.Now())
+	now := s.clock.Now()
+	updated, err := s.yards.SaveSettings(ctx, yard.ID, settings, now)
+	if err != nil {
+		return nil, err
+	}
+	if s.events != nil {
+		_ = s.events.Publish(ctx, GameEvent{
+			DedupeKey: "yard:" + strconv.FormatInt(yard.ID, 10) + ":settings:" + strconv.FormatInt(now.UnixNano(), 10),
+			Kind:      GameEventYardSettingsChanged, YardID: yard.ID, OccurredAt: now,
+			ContentVersion: gameengine.CurrentContentVersion, PayloadVersion: GameEventPayloadVersion,
+			Payload: YardSettingsChangedPayload{
+				AutoMessagesEnabled: updated.AutoMessagesEnabled, MaxAutoMessagesDay: updated.MaxAutoMessagesDay,
+				CatToCatBanter: updated.CatToCatBanter, FightsEnabled: updated.FightsEnabled,
+				HumorMode: updated.HumorMode, QuietUntil: updated.QuietUntil,
+			},
+		})
+	}
+	return updated, nil
 }

@@ -66,7 +66,19 @@ func (s *PersonalityService) SetAutoSpeak(ctx context.Context, catID int64, enab
 	if catID <= 0 {
 		return fmt.Errorf("cat id must be positive")
 	}
-	return s.repo.SetAutoSpeak(ctx, catID, enabled)
+	if err := s.repo.SetAutoSpeak(ctx, catID, enabled); err != nil {
+		return err
+	}
+	if s.events != nil {
+		now := s.clock.Now()
+		_ = s.events.Publish(ctx, GameEvent{
+			DedupeKey: "cat:" + strconv.FormatInt(catID, 10) + ":autospeak:" + strconv.FormatInt(now.UnixNano(), 10) + ":" + strconv.FormatBool(enabled),
+			Kind:      GameEventCatAutoSpeakChanged, CatID: catID, OccurredAt: now,
+			ContentVersion: gameengine.CurrentContentVersion, PayloadVersion: GameEventPayloadVersion,
+			Payload: CatAutoSpeakChangedPayload{Enabled: enabled},
+		})
+	}
+	return nil
 }
 
 func (s *PersonalityService) SetHumorMode(ctx context.Context, catID int64, mode domain.HumorMode) error {

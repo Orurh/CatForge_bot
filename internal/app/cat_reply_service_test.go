@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,16 +46,22 @@ func TestCatReplyServiceGeneratesTypedEvent(t *testing.T) {
 	quota := &stubAIQuota{allowed: true}
 	events := &fakeEvents{}
 	voice := ai.NewGateway(nil, ai.NewFallbackProvider(), nil, time.Second)
-	svc := NewCatReplyService(stubCats{cat: cat}, personalities, quota, voice, fakeClock{t: now}, events)
+	yards := stubYards{
+		yard: &domain.Yard{ID: 9, TelegramChatID: -100},
+		relationships: []domain.CatRelationship{{
+			CatAID: 42, CatBID: 50, CatAName: "Батон", CatBName: "Мурзик", Rivalry: 8,
+		}},
+	}
+	svc := NewCatReplyService(stubCats{cat: cat}, personalities, quota, yards, voice, fakeClock{t: now}, events)
 
-	gotCat, generation, err := svc.Reply(context.Background(), 7, -100, "request:1", "ну что?")
+	gotCat, generation, err := svc.Reply(context.Background(), 7, -100, "request:1", "что там Мурзик?")
 	if err != nil {
 		t.Fatalf("Reply() error = %v", err)
 	}
-	if gotCat != cat || generation.Text == "" || !generation.Fallback {
+	if gotCat != cat || !strings.Contains(generation.Text, "Мурзик") || !generation.Fallback {
 		t.Fatalf("unexpected reply: cat=%+v generation=%+v", gotCat, generation)
 	}
-	if len(events.events) != 1 || events.events[0].Kind != GameEventCatReplyGenerated || events.events[0].DedupeKey != "request:1" {
+	if len(events.events) != 1 || events.events[0].Kind != GameEventCatReplyGenerated || events.events[0].DedupeKey != "request:1" || events.events[0].YardID != 9 {
 		t.Fatalf("unexpected events: %+v", events.events)
 	}
 }
@@ -63,7 +70,7 @@ func TestCatReplyServiceRejectsRateLimit(t *testing.T) {
 	t.Parallel()
 	cat := &domain.Cat{ID: 42, UserID: 7}
 	quota := &stubAIQuota{allowed: false}
-	svc := NewCatReplyService(stubCats{cat: cat}, stubPersonalities{}, quota, ai.NewGateway(nil, nil, nil, time.Second), fakeClock{}, nil)
+	svc := NewCatReplyService(stubCats{cat: cat}, stubPersonalities{}, quota, nil, ai.NewGateway(nil, nil, nil, time.Second), fakeClock{}, nil)
 
 	_, _, err := svc.Reply(context.Background(), 7, -100, "request:1", "message")
 	if !errors.Is(err, domain.ErrAIRateLimited) {
@@ -88,6 +95,25 @@ func TestPersonalityServiceGeneratesFirstLineAndEvent(t *testing.T) {
 		t.Fatalf("generation/events = %+v/%+v", generation, events.events)
 	}
 	if event := events.events[0]; event.Kind != GameEventFirstPersonalityLine || !event.OccurredAt.Equal(now) {
+		t.Fatalf("unexpected event: %+v", event)
+	}
+}
+
+func TestPersonalityServicePublishesAutoSpeakSetting(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(456, 0)
+	events := &fakeEvents{}
+	svc := NewPersonalityService(stubPersonalities{}, nil, events, fakeClock{t: now})
+
+	if err := svc.SetAutoSpeak(context.Background(), 42, false); err != nil {
+		t.Fatalf("SetAutoSpeak() error = %v", err)
+	}
+	if len(events.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(events.events))
+	}
+	event := events.events[0]
+	payload, ok := event.Payload.(CatAutoSpeakChangedPayload)
+	if !ok || payload.Enabled || event.Kind != GameEventCatAutoSpeakChanged || event.CatID != 42 || !event.OccurredAt.Equal(now) {
 		t.Fatalf("unexpected event: %+v", event)
 	}
 }

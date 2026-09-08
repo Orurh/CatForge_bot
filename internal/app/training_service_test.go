@@ -73,6 +73,9 @@ func (s stubUsers) GetPendingInput(context.Context, int64, int64) (*PendingInput
 }
 func (s stubUsers) SavePendingInput(context.Context, PendingInput) error  { return nil }
 func (s stubUsers) ClearPendingInput(context.Context, int64, int64) error { return nil }
+func (s stubUsers) ClaimDailyCommand(context.Context, int64, int64, string, time.Time) (bool, error) {
+	return true, nil
+}
 
 func TestTrainingServicePublishesLogInSourceGroup(t *testing.T) {
 	t.Parallel()
@@ -81,7 +84,8 @@ func TestTrainingServicePublishesLogInSourceGroup(t *testing.T) {
 	events := &fakeEvents{}
 	cats := stubCats{cat: &domain.Cat{Name: "Тест", Breed: domain.BreedBengal, Level: 2, Energy: 80, EnergyUpdatedAt: now}}
 	engine := stubEngine{result: domain.TrainResult{Outcome: domain.TrainingOK, XPGain: 10, EnergyCost: 20, EffPercent: 100}}
-	svc := NewTrainingService(cats, stubUsers{}, nil, nil, nil, engine, nil, fakeClock{t: now}, zeroRNG{}, events)
+	yards := stubYards{yard: &domain.Yard{ID: 9, TelegramChatID: -100}}
+	svc := NewTrainingService(cats, stubUsers{}, nil, nil, yards, engine, nil, fakeClock{t: now}, zeroRNG{}, events)
 
 	_, _, _, err := svc.Train(context.Background(), 1, 777, -100, "group")
 	if err != nil {
@@ -93,6 +97,9 @@ func TestTrainingServicePublishesLogInSourceGroup(t *testing.T) {
 	payload, ok := events.events[0].Payload.(CatTrainedPayload)
 	if !ok || payload.TargetChatID != -100 || payload.CatName != "Тест" {
 		t.Fatalf("unexpected event: %+v", events.events[0])
+	}
+	if events.events[0].YardID != 9 {
+		t.Fatalf("yard id = %d, want 9", events.events[0].YardID)
 	}
 }
 
@@ -152,6 +159,9 @@ func TestTrainingServiceSkipsPrivateLogWithoutHomeChat(t *testing.T) {
 	}
 	if payload := events.events[0].Payload.(CatTrainedPayload); payload.TargetChatID != 0 {
 		t.Fatalf("target chat = %d, want 0", payload.TargetChatID)
+	}
+	if events.events[0].YardID != 0 {
+		t.Fatalf("private training yard id = %d, want 0", events.events[0].YardID)
 	}
 }
 
@@ -255,5 +265,37 @@ func TestTrainingServiceGeneratesRivalAwareNarrative(t *testing.T) {
 	payload := events.events[0].Payload.(CatTrainedPayload)
 	if payload.RivalName != "Батон" || payload.Rivalry != 17 || payload.Narrative != generation.Text || !payload.Fallback {
 		t.Fatalf("training payload = %+v", payload)
+	}
+}
+
+func TestTrainingServiceKeepsRoutineTrainingProcedural(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(123, 0)
+	cat := &domain.Cat{
+		ID: 42, UserID: 7, Name: "Барсик", Breed: domain.BreedBengal,
+		Trait: domain.TraitBully, Level: 3, Energy: 100, EnergyUpdatedAt: now,
+	}
+	result := domain.TrainResult{
+		Outcome: domain.TrainingOK, Encounter: domain.EncounterPigeon,
+		XPGain: 100, EnergyCost: 90, EffPercent: 100,
+	}
+	quota := &stubAIQuota{allowed: true}
+	events := &fakeEvents{}
+	service := NewTrainingService(
+		stubCats{cat: cat}, stubUsers{}, stubPersonalities{}, quota, nil,
+		stubEngine{result: result}, ai.NewGateway(nil, ai.NewFallbackProvider(), nil, time.Second),
+		fakeClock{t: now}, zeroRNG{}, events,
+	)
+
+	_, _, generation, err := service.Train(context.Background(), 7, 777, 10, "private")
+	if err != nil {
+		t.Fatalf("Train() error = %v", err)
+	}
+	if generation.Text != "" || quota.calls != 0 {
+		t.Fatalf("routine training used AI: generation=%+v quota_calls=%d", generation, quota.calls)
+	}
+	payload := events.events[0].Payload.(CatTrainedPayload)
+	if payload.Narrative != "" || payload.Provider != "" {
+		t.Fatalf("routine training stored AI narrative: %+v", payload)
 	}
 }

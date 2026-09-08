@@ -12,7 +12,10 @@ import (
 	"catforge/internal/gameengine"
 )
 
-const yardEventDuration = 6 * time.Hour
+const (
+	yardEventDuration       = 6 * time.Hour
+	yardEventActivityWindow = 7 * 24 * time.Hour
+)
 
 type YardEventService struct {
 	yards      YardRepository
@@ -22,6 +25,11 @@ type YardEventService struct {
 	clock      Clock
 	rng        RNG
 	events     GameEventSink
+	banter     *CatBanterService
+}
+
+func (s *YardEventService) SetBanterService(banter *CatBanterService) {
+	s.banter = banter
 }
 
 type YardEventStatus struct {
@@ -42,8 +50,12 @@ func (s *YardEventService) StartOrGet(ctx context.Context, telegramChatID int64)
 	}
 	now := s.clock.Now()
 	seed := int64(s.rng.Intn(1<<30))<<30 | int64(s.rng.Intn(1<<30))
+	eventType, err := s.eventsRepo.NextEventType(ctx, yard.ID)
+	if err != nil {
+		return YardEventStatus{}, err
+	}
 	event, created, err := s.eventsRepo.StartOrGet(
-		ctx, yard.ID, domain.YardEventFishTruck, seed, now, now.Add(yardEventDuration), gameengine.CurrentContentVersion,
+		ctx, yard.ID, eventType, seed, now, now.Add(yardEventDuration), gameengine.CurrentContentVersion,
 	)
 	if err != nil {
 		return YardEventStatus{}, err
@@ -54,7 +66,8 @@ func (s *YardEventService) StartOrGet(ctx context.Context, telegramChatID int64)
 			YardID: yard.ID, OccurredAt: now, ContentVersion: gameengine.CurrentContentVersion,
 			PayloadVersion: GameEventPayloadVersion, Notable: true,
 			Payload: YardEventStartedPayload{
-				EventID: event.ID, EventType: string(event.Type), Seed: event.Seed, ResolvesAt: event.ResolvesAt,
+				EventID: event.ID, EventType: string(event.Type), Seed: event.Seed,
+				StartsAt: event.StartsAt, ResolvesAt: event.ResolvesAt,
 			},
 		})
 	}
@@ -63,6 +76,60 @@ func (s *YardEventService) StartOrGet(ctx context.Context, telegramChatID int64)
 		return YardEventStatus{}, err
 	}
 	return YardEventStatus{Yard: yard, Event: event, Counts: counts, Created: created}, nil
+}
+
+func (s *YardEventService) GetActive(ctx context.Context, telegramChatID int64) (YardEventStatus, error) {
+	yard, err := s.yards.GetByTelegramChatID(ctx, telegramChatID)
+	if err != nil {
+		return YardEventStatus{}, err
+	}
+	event, err := s.eventsRepo.GetCurrentActive(ctx, telegramChatID)
+	if err != nil {
+		return YardEventStatus{}, err
+	}
+	counts, err := s.eventsRepo.ChoiceCounts(ctx, event.ID)
+	if err != nil {
+		return YardEventStatus{}, err
+	}
+	return YardEventStatus{Yard: yard, Event: event, Counts: counts}, nil
+}
+
+func (s *YardEventService) StartDue(ctx context.Context, limit int) (int, error) {
+	now := s.clock.Now()
+	yards, err := s.eventsRepo.ListStartCandidates(ctx, now, now.Add(-yardEventActivityWindow), limit)
+	if err != nil {
+		return 0, err
+	}
+	started := 0
+	for _, yard := range yards {
+		seed := int64(s.rng.Intn(1<<30))<<30 | int64(s.rng.Intn(1<<30))
+		eventType, typeErr := s.eventsRepo.NextEventType(ctx, yard.ID)
+		if typeErr != nil {
+			return started, typeErr
+		}
+		event, created, startErr := s.eventsRepo.StartOrGet(
+			ctx, yard.ID, eventType, seed, now, now.Add(yardEventDuration), gameengine.CurrentContentVersion,
+		)
+		if startErr != nil {
+			return started, startErr
+		}
+		if !created {
+			continue
+		}
+		started++
+		if s.events != nil {
+			_ = s.events.Publish(ctx, GameEvent{
+				DedupeKey: fmt.Sprintf("yard:%d:event:%d:started", yard.ID, event.ID), Kind: GameEventYardEventStarted,
+				YardID: yard.ID, OccurredAt: now, ContentVersion: gameengine.CurrentContentVersion,
+				PayloadVersion: GameEventPayloadVersion, Notable: true,
+				Payload: YardEventStartedPayload{
+					EventID: event.ID, TelegramChatID: yard.TelegramChatID, EventType: string(event.Type), Seed: event.Seed,
+					StartsAt: event.StartsAt, ResolvesAt: event.ResolvesAt,
+				},
+			})
+		}
+	}
+	return started, nil
 }
 
 func (s *YardEventService) ResolveDue(ctx context.Context, limit int) (int, error) {
@@ -103,27 +170,52 @@ func (s *YardEventService) Resolve(ctx context.Context, eventID int64) (bool, er
 	if err != nil || !saved {
 		return saved, err
 	}
+	relationships, _ := s.yards.ListRelationships(ctx, input.Event.YardID)
+	narrativeRequest := eventNarrativeRequest(input, result, relationships)
 	generation := ai.Generation{}
 	if s.voice != nil {
-		generation, _ = s.voice.GenerateEventNarrative(ctx, eventNarrativeRequest(input, result))
+		generation, _ = s.voice.GenerateEventNarrative(ctx, narrativeRequest)
 	}
 	if s.events != nil {
+		participants := resolvedEventParticipants(input.Participants, result.Participants)
 		_ = s.events.Publish(ctx, GameEvent{
 			DedupeKey: fmt.Sprintf("yard:%d:event:%d:resolved", input.Event.YardID, eventID),
 			Kind:      GameEventYardEventResolved, YardID: input.Event.YardID, OccurredAt: now,
 			RulesVersion: gameengine.CurrentRulesVersion, ContentVersion: input.Event.ContentVersion,
 			PayloadVersion: GameEventPayloadVersion, Notable: true,
 			Payload: YardEventResolvedPayload{
-				EventID: eventID, TelegramChatID: input.TelegramChatID, Result: result,
-				Narrative: generation.Text, Provider: generation.Provider, Model: generation.Model, Fallback: generation.Fallback,
+				EventID: eventID, TelegramChatID: input.TelegramChatID, EventType: string(input.Event.Type), Result: result,
+				Participants: participants,
+				Narrative:    generation.Text, Provider: generation.Provider, Model: generation.Model, Fallback: generation.Fallback,
 			},
 		})
 	}
-	s.publishAutonomousReaction(ctx, input, result, now)
+	s.publishAutonomousReaction(ctx, input, result, relationships, now)
+	if s.banter != nil {
+		if yard, yardErr := s.yards.GetByID(ctx, input.Event.YardID); yardErr == nil {
+			_, _ = s.banter.PublishYardEvent(ctx, yard, input, result, relationships, now)
+		}
+	}
 	return true, nil
 }
 
-func (s *YardEventService) publishAutonomousReaction(ctx context.Context, input domain.YardEventResolutionInput, result domain.YardEventResult, now time.Time) {
+func resolvedEventParticipants(participants []domain.YardEventParticipant, results []domain.YardEventParticipantResult) []YardEventParticipantResultPayload {
+	byID := make(map[int64]domain.YardEventParticipant, len(participants))
+	for _, participant := range participants {
+		byID[participant.CatID] = participant
+	}
+	resolved := make([]YardEventParticipantResultPayload, 0, len(results))
+	for _, result := range results {
+		cat := byID[result.CatID]
+		resolved = append(resolved, YardEventParticipantResultPayload{
+			CatID: result.CatID, CatName: cat.CatName, Breed: cat.Breed, Level: cat.Level,
+			Choice: result.Choice, Contribution: result.Contribution, MVP: result.MVP,
+		})
+	}
+	return resolved
+}
+
+func (s *YardEventService) publishAutonomousReaction(ctx context.Context, input domain.YardEventResolutionInput, result domain.YardEventResult, relationships []domain.CatRelationship, now time.Time) {
 	if s.voice == nil || s.events == nil || len(result.Participants) == 0 {
 		return
 	}
@@ -153,11 +245,11 @@ func (s *YardEventService) publishAutonomousReaction(ctx context.Context, input 
 	if speaker.CatID == 0 {
 		return
 	}
-	allowed, err := s.yards.ClaimAutoMessageSlot(ctx, yard.ID, now, yard.MaxAutoMessagesDay)
+	allowed, err := s.yards.ClaimAutoMessageSlot(ctx, yard.ID, now, yard.MaxAutoMessagesDay, domain.AutoMessageSingle)
 	if err != nil || !allowed {
 		return
 	}
-	request := eventNarrativeRequest(input, result)
+	request := eventNarrativeRequest(input, result, relationships)
 	request.Type = ai.GenerationAutonomousCat
 	request.HumorMode = yard.HumorMode
 	request.Cat = ai.CatContext{
@@ -180,24 +272,28 @@ func (s *YardEventService) publishAutonomousReaction(ctx context.Context, input 
 	})
 }
 
-func eventNarrativeRequest(input domain.YardEventResolutionInput, result domain.YardEventResult) ai.GenerationRequest {
+func eventNarrativeRequest(input domain.YardEventResolutionInput, result domain.YardEventResult, relationships []domain.CatRelationship) ai.GenerationRequest {
 	byID := make(map[int64]domain.YardEventParticipant, len(input.Participants))
+	participantIDs := make(map[int64]struct{}, len(input.Participants))
 	for _, participant := range input.Participants {
 		byID[participant.CatID] = participant
+		participantIDs[participant.CatID] = struct{}{}
 	}
 	participants := make([]ai.EventParticipantContext, 0, len(result.Participants))
 	facts := []string{
-		"event_type=" + string(input.Event.Type), "success=" + strconv.FormatBool(result.Success),
+		"event_type=" + string(input.Event.Type), "outcome_tier=" + string(result.OutcomeTier),
 		"team_score=" + strconv.Itoa(result.TeamScore), "target_score=" + strconv.Itoa(result.TargetScore),
-		"fish_total=" + strconv.Itoa(result.FishTotal), "secret_found=" + strconv.FormatBool(result.SecretFound),
+		"yard_score=" + strconv.Itoa(result.YardScore), "xp_gain=" + strconv.FormatInt(result.XPGain, 10),
+		"secret_found=" + strconv.FormatBool(result.SecretFound),
 	}
 	for _, outcome := range result.Participants {
 		name := byID[outcome.CatID].CatName
 		participants = append(participants, ai.EventParticipantContext{
 			CatName: name, Choice: string(outcome.Choice), Contribution: outcome.Contribution,
-			FishReward: outcome.FishReward, MVP: outcome.MVP,
+			MVP: outcome.MVP,
 		})
-		facts = append(facts, fmt.Sprintf("cat=%q choice=%s contribution=%d fish=%d mvp=%t", name, outcome.Choice, outcome.Contribution, outcome.FishReward, outcome.MVP))
+		facts = append(facts, fmt.Sprintf("cat=%q choice=%s contribution=%d mvp=%t", name, outcome.Choice, outcome.Contribution, outcome.MVP))
+		facts = append(facts, outcome.ProgressionFacts...)
 	}
 	for _, effect := range result.RelationshipEffects {
 		facts = append(facts, fmt.Sprintf(
@@ -208,9 +304,10 @@ func eventNarrativeRequest(input domain.YardEventResolutionInput, result domain.
 	}
 	return ai.GenerationRequest{
 		YardID: input.Event.YardID, HumorMode: ai.HumorNormal, EventFacts: facts,
+		Relationships: relationshipContextsAmong(participantIDs, relationships),
 		Event: &ai.EventContext{
-			EventType: string(input.Event.Type), Success: result.Success, TeamScore: result.TeamScore,
-			TargetScore: result.TargetScore, FishTotal: result.FishTotal, SecretFound: result.SecretFound,
+			EventType: string(input.Event.Type), OutcomeTier: string(result.OutcomeTier), TeamScore: result.TeamScore,
+			TargetScore: result.TargetScore, YardScore: result.YardScore, XPGain: result.XPGain, SecretFound: result.SecretFound,
 			StrategyBonus: result.StrategyBonus, Participants: participants,
 		},
 	}
@@ -241,6 +338,9 @@ func (s *YardEventService) Choose(ctx context.Context, telegramChatID, eventID, 
 	if err != nil {
 		return YardEventStatus{}, err
 	}
-	event := &domain.YardEvent{ID: eventID, YardID: yard.ID, Type: domain.YardEventFishTruck, State: domain.YardEventActive}
+	event, err := s.eventsRepo.GetActive(ctx, telegramChatID, eventID)
+	if err != nil {
+		return YardEventStatus{}, err
+	}
 	return YardEventStatus{Yard: yard, Event: event, Counts: counts}, nil
 }

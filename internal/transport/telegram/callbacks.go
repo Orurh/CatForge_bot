@@ -39,6 +39,7 @@ const (
 	CBCollectionEquipPrefix   = "collection:equip:"
 	CBCollectionUpgradePrefix = "collection:upgrade:"
 	CBYardChoicePrefix        = "yard:choice:"
+	CBFightRevengePrefix      = "fight:revenge:"
 )
 
 func PersonalCallback(ownerUserID int64, action string) string {

@@ -14,6 +14,26 @@ func setRequiredEnv(t *testing.T) {
 	t.Setenv("GAME_ENGINE_ADDR", "game-engine:50051")
 }
 
+func TestLoadCodexDoesNotRequireAPIKey(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "dev")
+	t.Setenv("AI_PROVIDER", "codex")
+	t.Setenv("AI_API_KEY", "")
+	t.Setenv("AI_MODEL", "gpt-5.6-luna")
+	t.Setenv("AI_TIMEOUT", "30s")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CodexBridgeSocket != "/run/codex-bridge/bridge.sock" {
+		t.Fatal(cfg.CodexBridgeSocket)
+	}
+	t.Setenv("AI_MODEL", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("missing Codex model accepted")
+	}
+}
+
 func TestLoadRequiresWebhookSecretInProduction(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("APP_ENV", "prod")

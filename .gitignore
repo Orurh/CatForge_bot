@@ -4,3 +4,11 @@
 .docker-compose.override.yml
 *.log
 engine_cpp/build/
+
+backups/
+*.dump
+
+.monitoring-secrets/
+.codex-bridge/
+PLAN.md
+catforge-bot-all-code.txtcatforge-bot-all-code.txt
