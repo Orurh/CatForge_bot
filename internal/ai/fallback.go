@@ -291,7 +291,7 @@ func fallbackReplyKey(kind GenerationType, trait domain.Trait, humor HumorMode) 
 		if slug != "default" {
 			return "fallback.reply.bold." + slug
 		}
-		return "fallback.reply.normal.default"
+		return "fallback.reply.bold.default"
 	}
 	return "fallback.reply.normal." + slug
 }

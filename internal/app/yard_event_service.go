@@ -94,6 +94,14 @@ func (s *YardEventService) GetActive(ctx context.Context, telegramChatID int64) 
 	return YardEventStatus{Yard: yard, Event: event, Counts: counts}, nil
 }
 
+func (s *YardEventService) GetSchedule(ctx context.Context, telegramChatID int64) (domain.YardEventSchedule, error) {
+	yard, err := s.yards.GetByTelegramChatID(ctx, telegramChatID)
+	if err != nil {
+		return domain.YardEventSchedule{}, err
+	}
+	return s.eventsRepo.GetSchedule(ctx, yard.ID, s.clock.Now().Add(-yardEventActivityWindow))
+}
+
 func (s *YardEventService) StartDue(ctx context.Context, limit int) (int, error) {
 	now := s.clock.Now()
 	yards, err := s.eventsRepo.ListStartCandidates(ctx, now, now.Add(-yardEventActivityWindow), limit)

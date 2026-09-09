@@ -100,6 +100,21 @@ func (r *YardEventRepo) GetActive(ctx context.Context, telegramChatID, eventID i
 	return event, nil
 }
 
+// Shared with ListStartCandidates so the displayed deadline cannot drift.
+const yardEventNextAtSQL = `COALESCE(previous.resolves_at, y.created_at) +
+ make_interval(mins => (1440 + mod(abs(COALESCE(previous.seed, y.id * 1103515245 + 12345)), 1441))::int)`
+
+func (r *YardEventRepo) GetSchedule(ctx context.Context, yardID int64, activeSince time.Time) (domain.YardEventSchedule, error) {
+	var status domain.YardEventSchedule
+	err := r.pool.QueryRow(ctx, `SELECT
+ (SELECT count(*) FROM yard_members m WHERE m.yard_id=y.id AND m.last_active_at >= $2),
+ `+yardEventNextAtSQL+`
+ FROM yards y LEFT JOIN LATERAL (
+ SELECT seed, resolves_at FROM yard_events WHERE yard_id=y.id ORDER BY starts_at DESC, id DESC LIMIT 1
+ ) previous ON true WHERE y.id=$1`, yardID, activeSince).Scan(&status.ActiveCats, &status.NextAt)
+	return status, err
+}
+
 func (r *YardEventRepo) ListStartCandidates(ctx context.Context, now, activeSince time.Time, limit int) ([]domain.Yard, error) {
 	if limit <= 0 {
 		limit = 20
@@ -123,8 +138,7 @@ func (r *YardEventRepo) ListStartCandidates(ctx context.Context, now, activeSinc
 			SELECT count(*) FROM yard_members member
 			WHERE member.yard_id = y.id AND member.last_active_at >= $2
 		) >= 2
-		AND COALESCE(previous.resolves_at, y.created_at) +
-			make_interval(mins => (1440 + mod(abs(COALESCE(previous.seed, y.id * 1103515245 + 12345)), 1441))::int) <= $1
+		AND `+yardEventNextAtSQL+` <= $1
 		ORDER BY COALESCE(previous.resolves_at, y.created_at), y.id
 		LIMIT $3
 	`, now, activeSince, limit)

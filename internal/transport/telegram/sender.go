@@ -186,19 +186,21 @@ func (s *Sender) callResult(ctx context.Context, method string, payload map[stri
 }
 
 func (s *Sender) PhotoWithKeyboard(ctx context.Context, chatID int64, photoURL, caption string, kb any) error {
+	// Telegram expects an object when reply_markup is present. In multipart,
+	// marshaling nil sends the literal string "null", which rejects the photo.
+	markup := marshalString(kb)
 	if isEmbeddedPhoto(photoURL) {
-		return s.callMultipart(ctx, "sendPhoto", photoURL, map[string]string{
-			"chat_id":      strconv.FormatInt(chatID, 10),
-			"caption":      caption,
-			"reply_markup": marshalString(kb),
-		})
+		fields := map[string]string{"chat_id": strconv.FormatInt(chatID, 10), "caption": caption}
+		if markup != "null" {
+			fields["reply_markup"] = markup
+		}
+		return s.callMultipart(ctx, "sendPhoto", photoURL, fields)
 	}
-	return s.Call(ctx, "sendPhoto", map[string]any{
-		"chat_id":      chatID,
-		"photo":        photoURL, // URL или file_id
-		"caption":      caption,
-		"reply_markup": kb,
-	})
+	payload := map[string]any{"chat_id": chatID, "photo": photoURL, "caption": caption}
+	if markup != "null" {
+		payload["reply_markup"] = kb
+	}
+	return s.Call(ctx, "sendPhoto", payload)
 }
 
 func (s *Sender) EditMediaWithKeyboard(ctx context.Context, chatID int64, messageID int, photoURL, caption string, kb any) error {

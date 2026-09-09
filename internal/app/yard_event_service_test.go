@@ -26,6 +26,9 @@ type stubYardEvents struct {
 	wantStartType domain.YardEventType
 }
 
+func (s stubYardEvents) GetSchedule(context.Context, int64, time.Time) (domain.YardEventSchedule, error) {
+	return domain.YardEventSchedule{}, s.err
+}
 func (s stubYardEvents) NextEventType(context.Context, int64) (domain.YardEventType, error) {
 	if s.nextType == "" {
 		return domain.YardEventFishTruck, s.err

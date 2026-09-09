@@ -84,6 +84,7 @@ type IdleBanterYardRepository interface {
 }
 
 type YardEventRepository interface {
+	GetSchedule(ctx context.Context, yardID int64, activeSince time.Time) (domain.YardEventSchedule, error)
 	NextEventType(ctx context.Context, yardID int64) (domain.YardEventType, error)
 	StartOrGet(ctx context.Context, yardID int64, eventType domain.YardEventType, seed int64, startsAt, resolvesAt time.Time, contentVersion uint32) (event *domain.YardEvent, created bool, err error)
 	GetCurrentActive(ctx context.Context, telegramChatID int64) (*domain.YardEvent, error)

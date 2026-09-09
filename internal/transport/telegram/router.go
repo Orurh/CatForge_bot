@@ -21,12 +21,13 @@ import (
 )
 
 type Router struct {
-	app           *app.App
-	send          *Sender
-	publicBaseURL string
-	botUsername   string
-	webhookSecret string
-	log           logx.Logger
+	groupCooldowns GroupCooldownStore
+	app            *app.App
+	send           *Sender
+	publicBaseURL  string
+	botUsername    string
+	webhookSecret  string
+	log            logx.Logger
 }
 
 func NewRouter(app *app.App, send *Sender, publicBaseURL, botUsername, webhookSecret string, log logx.Logger) *Router {
@@ -222,6 +223,9 @@ func (r *Router) onMessage(ctx context.Context, m *Message) {
 			return
 		}
 		r.tryConsumePendingCatName(ctx, tgc, m)
+		return
+	}
+	if !r.allowGroupCommand(ctx, tgc, cmd) {
 		return
 	}
 	if isPersonalCommand(cmd) {
@@ -714,7 +718,12 @@ func (r *Router) showYardEvent(ctx context.Context, tgc *tgCtx) {
 	status, err := r.app.YardEvent.GetActive(ctx, tgc.chatID)
 	if err != nil {
 		if errors.Is(err, domain.ErrYardEventUnavailable) {
-			r.sendText(ctx, tgc.chatID, contentText("yard_event.none"))
+			schedule, scheduleErr := r.app.YardEvent.GetSchedule(ctx, tgc.chatID)
+			if scheduleErr != nil {
+				r.sendText(ctx, tgc.chatID, contentText("yard_event.error.unavailable"))
+				return
+			}
+			r.sendText(ctx, tgc.chatID, formatYardEventSchedule(schedule, tgc.now))
 			return
 		}
 		r.sendText(ctx, tgc.chatID, contentText("yard_event.error.unavailable"))
@@ -748,6 +757,21 @@ func (r *Router) showYardWeeklySummary(ctx context.Context, tgc *tgCtx, message 
 		r.sendText(ctx, tgc.chatID, "Недельные итоги доступны только в групповом Дворе.")
 		return
 	}
+	allowed, next := r.claimGroupAction(ctx, tgc, 0, "week", 15*time.Minute)
+	if !allowed {
+		r.notifyGroupCooldown(ctx, tgc, next)
+		return
+	}
+	delivered := false
+	defer func() {
+		if !delivered && r.groupCooldowns != nil {
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			defer cancel()
+			if err := r.groupCooldowns.Release(releaseCtx, tgc.chatID, 0, "week", next); err != nil {
+				r.log.Warn("weekly cooldown release failed", logx.Any("err", err))
+			}
+		}
+	}()
 	result, err := r.app.WeeklySummary.Build(
 		ctx, tgc.chatID, tgc.userID, app.WeeklySummaryRequestKey(tgc.chatID, message.MessageID),
 	)
@@ -759,7 +783,11 @@ func (r *Router) showYardWeeklySummary(ctx context.Context, tgc *tgCtx, message 
 		r.sendText(ctx, tgc.chatID, "Не удалось собрать итоги Двора. Попробуй позже.")
 		return
 	}
-	r.sendText(ctx, tgc.chatID, views.FormatYardWeeklySummary(result))
+	if _, err := r.send.TextResult(ctx, tgc.chatID, views.FormatYardWeeklySummary(result)); err != nil {
+		r.log.Warn("weekly summary send failed", logx.Any("err", err))
+		return
+	}
+	delivered = true
 }
 
 func (r *Router) chooseYardEvent(ctx context.Context, cbc *cbCtx, callbackID string) {
@@ -860,6 +888,9 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 			_ = r.send.AnswerCallback(ctx, cq.ID)
 		}
 		r.log.Warn("callback ignored", logx.Any("err", err))
+		return
+	}
+	if !r.allowGroupCallback(ctx, cbc, cq.ID) {
 		return
 	}
 	if strings.HasPrefix(cbc.data, CBYardChoicePrefix) {

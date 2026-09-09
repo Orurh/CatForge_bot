@@ -18,7 +18,7 @@ find "${project_root}" -type f \
     -name '*.go' -o -name '*.mod' -o -name '*.sum' -o -name '*.md' -o \
     -name '*.yml' -o -name '*.yaml' -o -name '*.sql' -o -name '*.proto' -o \
     -name '*.alloy' -o -name '*.conf' -o -name '*.cpp' -o -name '*.hpp' -o -name '*.sh' -o -name '*.json' -o \
-    -name 'Dockerfile' -o -name 'CMakeLists.txt' -o -name '.gitignore' -o \
+    -name 'LICENSE' -o -name 'NOTICE' -o -name 'Dockerfile' -o -name 'CMakeLists.txt' -o -name '.gitignore' -o \
     -name '.dockerignore' -o -name '.env.example' \
   \) -print0 | sort -z | while IFS= read -r -d '' file; do
     relative="${file#"${project_root}/"}"

@@ -143,3 +143,46 @@ func TestIsChatAdmin(t *testing.T) {
 		t.Fatalf("IsChatAdmin() = %v, %v", admin, err)
 	}
 }
+
+func TestPhotoOmitsNullReplyMarkup(t *testing.T) {
+	for _, photo := range []string{"/static/ui/starter.png", "https://example.test/cat.png"} {
+		for _, kb := range []any{nil, map[string]any(nil), map[string]any{"inline_keyboard": [][]any{}}} {
+			wantMarkup := marshalString(kb) != "null"
+			sender := NewSender("test-token", logx.Nop())
+			sender.apiBaseURL = "http://telegram.test"
+			sender.http = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				var present bool
+				var raw string
+				if strings.HasPrefix(req.Header.Get("Content-Type"), "multipart/") {
+					if err := req.ParseMultipartForm(2 << 20); err != nil {
+						t.Fatal(err)
+					}
+					defer req.MultipartForm.RemoveAll()
+					_, present = req.MultipartForm.Value["reply_markup"]
+					raw = req.FormValue("reply_markup")
+				} else {
+					var payload map[string]json.RawMessage
+					if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+						t.Fatal(err)
+					}
+					v, ok := payload["reply_markup"]
+					present = ok
+					raw = string(v)
+				}
+				if present != wantMarkup || raw == "null" {
+					t.Errorf("photo=%s keyboard=%v present=%v raw=%q", photo, kb, present, raw)
+				}
+				if present {
+					var object map[string]any
+					if err := json.Unmarshal([]byte(raw), &object); err != nil || object == nil {
+						t.Errorf("invalid keyboard object: %s", raw)
+					}
+				}
+				return jsonResponse(`{"ok":true,"result":{}}`), nil
+			})}
+			if err := sender.PhotoWithKeyboard(context.Background(), 123, photo, "caption", kb); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}

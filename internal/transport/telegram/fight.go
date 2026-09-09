@@ -15,6 +15,10 @@ import (
 )
 
 type fightTextData struct {
+	CatALevel    int
+	CatBLevel    int
+	Crits        int
+	Dodges       int
 	CatName      string
 	AttackerName string
 	DefenderName string
@@ -41,7 +45,7 @@ type fightTextData struct {
 	LoserXPGain  int64
 }
 
-const fightNarrativeTurnLimit = 10
+const fightNarrativeTurnLimit = 8
 
 func (r *Router) toggleFight(ctx context.Context, tgc *tgCtx, message *Message) {
 	if tgc == nil || tgc.chatType == "private" {
@@ -74,11 +78,11 @@ func (r *Router) toggleFight(ctx context.Context, tgc *tgCtx, message *Message) 
 		return
 	}
 	if outcome.Status == domain.FightQueueMatched {
-		r.sendText(ctx, tgc.chatID, formatFightOutcome(outcome))
+		r.sendText(ctx, tgc.chatID, FormatFightOutcome(outcome))
 		r.sendFightBanter(ctx, tgc.chatID, outcome.Banter)
 		return
 	}
-	r.sendText(ctx, tgc.chatID, formatFightOutcome(outcome))
+	r.sendText(ctx, tgc.chatID, FormatFightOutcome(outcome))
 }
 
 func (r *Router) revengeFight(ctx context.Context, cbc *cbCtx, callbackID string) {
@@ -97,7 +101,7 @@ func (r *Router) revengeFight(ctx context.Context, cbc *cbCtx, callbackID string
 		return
 	}
 	_ = r.send.AnswerCallbackText(ctx, callbackID, contentText("fight.revenge.accepted"))
-	r.sendText(ctx, cbc.chatID, formatFightOutcome(outcome))
+	r.sendText(ctx, cbc.chatID, FormatFightOutcome(outcome))
 	r.sendFightBanter(ctx, cbc.chatID, outcome.Banter)
 }
 
@@ -145,7 +149,9 @@ func (r *Router) sendFightDomainError(ctx context.Context, tgc *tgCtx, err error
 	return true
 }
 
-func formatFightOutcome(outcome app.FightOutcome) string {
+// FormatFightOutcome is shared by live arena handlers and operator replays.
+// It only formats the saved result; it never rolls a new fight or grants rewards.
+func FormatFightOutcome(outcome app.FightOutcome) string {
 	if outcome.Cat == nil {
 		return contentText("fight.error.unavailable")
 	}
@@ -184,16 +190,20 @@ func formatFinishedFight(outcome app.FightOutcome) string {
 		AttackerName: first.Name, DefenderName: second.Name, FirstName: first.Name, SecondName: second.Name,
 		WinnerName: winner.Name, LoserName: loser.Name, WinnerHP: winnerHP,
 		Rounds: outcome.Result.Rounds, Rivalry: outcome.Rivalry,
-		CatAName: catA.Name, CatBName: catB.Name,
+		CatAName: catA.Name, CatBName: catB.Name, CatALevel: catA.Level, CatBLevel: catB.Level,
 		CatAWins: outcome.Stats.CatAWins, CatALosses: outcome.Stats.CatALosses,
 		CatBWins: outcome.Stats.CatBWins, CatBLosses: outcome.Stats.CatBLosses,
 		PairCatAWins: outcome.Stats.PairCatAWins, PairCatBWins: outcome.Stats.PairCatBWins,
 		WinnerXPGain: outcome.WinnerXPGain, LoserXPGain: outcome.LoserXPGain,
 	}
 	selector := outcome.Seed
-	initiativeKey := "fight.initiative.speed"
-	if catA.PhysicalStats().TailMM == catB.PhysicalStats().TailMM {
-		initiativeKey = "fight.initiative.coin"
+	for _, turn := range outcome.Result.Turns {
+		if turn.Crit && turn.Damage > 0 {
+			data.Crits++
+		}
+		if turn.Damage == 0 {
+			data.Dodges++
+		}
 	}
 	startKey := "fight.start"
 	startData := data
@@ -204,8 +214,8 @@ func formatFinishedFight(outcome app.FightOutcome) string {
 	}
 	parts := []string{
 		gamecontent.Render("fight.title", selector, data),
-		gamecontent.Render(startKey, selector, startData),
-		gamecontent.Render(initiativeKey, selector, data),
+		renderFightText(outcome, startKey, selector, startData),
+		gamecontent.Render("fight.initiative.observed", selector, data),
 	}
 	if turns := formatFightTurns(outcome, catA, catB); turns != "" {
 		parts = append(parts, turns)
@@ -214,7 +224,7 @@ func formatFinishedFight(outcome app.FightOutcome) string {
 	if winnerHP <= 5 {
 		resultKey = "fight.result.close"
 	}
-	parts = append(parts, gamecontent.Render(resultKey, selector+1, data))
+	parts = append(parts, renderFightText(outcome, resultKey, selector+1, data))
 	parts = append(parts, gamecontent.Render("fight.result.xp", selector, data))
 	if winner.Level < loser.Level {
 		parts = append(parts, gamecontent.Render("fight.result.upset", selector+2, data))
@@ -236,11 +246,11 @@ func formatFightTurns(outcome app.FightOutcome, catA, catB *domain.Cat) string {
 	}
 	indices := selectFightTurnIndices(turns, fightNarrativeTurnLimit)
 	lines := make([]string, 0, len(indices)+1)
-	previous := -1
+	if len(indices) < len(turns) {
+		lines = append(lines, gamecontent.Render("fight.turns.skipped", outcome.Seed, fightTextData{Omitted: len(turns) - len(indices)}))
+	}
+	variants := map[string]uint64{}
 	for _, index := range indices {
-		if previous >= 0 && index > previous+1 {
-			lines = append(lines, gamecontent.Render("fight.turns.skipped", outcome.Seed+uint64(index), fightTextData{Omitted: index - previous - 1}))
-		}
 		turn := turns[index]
 		attacker, defender := fightCatsForTurn(turn, catA, catB)
 		data := fightTextData{
@@ -260,11 +270,18 @@ func formatFightTurns(outcome app.FightOutcome, catA, catB *domain.Cat) string {
 		case turn.Damage <= 2:
 			key = "fight.turn.glancing"
 		}
-		turnSelector := outcome.Seed + uint64(index+1)*97 + uint64(turn.AttackerCatID)
-		lines = append(lines, gamecontent.Render(key, turnSelector, data))
-		previous = index
+		turnSelector := outcome.Seed + variants[key]
+		variants[key]++
+		lines = append(lines, renderFightText(outcome, key, turnSelector, data))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func renderFightText(outcome app.FightOutcome, key string, selector uint64, data fightTextData) string {
+	if outcome.Yard != nil && outcome.Yard.HumorMode == domain.HumorBold && gamecontent.Has(key+".bold") {
+		key += ".bold"
+	}
+	return gamecontent.Render(key, selector, data)
 }
 
 func fightCatsForTurn(turn domain.FightTurn, catA, catB *domain.Cat) (*domain.Cat, *domain.Cat) {
@@ -288,17 +305,29 @@ func selectFightTurnIndices(turns []domain.FightTurn, limit int) []int {
 			selected[index] = struct{}{}
 		}
 	}
+	// Establish both fighters, preserve the finish, then show real special moves.
 	add(0)
 	add(1)
-	add(len(turns) - 3)
-	add(len(turns) - 2)
 	add(len(turns) - 1)
+	for _, wantCrit := range []bool{true, false} {
+		for index, turn := range turns {
+			if (wantCrit && turn.Crit && turn.Damage > 0) || (!wantCrit && turn.Damage == 0) {
+				add(index)
+				break
+			}
+		}
+	}
+	add(len(turns) - 2)
 	for index, turn := range turns {
-		if turn.Crit {
+		if turn.Crit && turn.Damage > 0 {
 			add(index)
 		}
 	}
-	for index := 2; index < len(turns)-3 && len(selected) < limit; index++ {
+	// Spread remaining highlights through the middle instead of just the opening.
+	for _, index := range []int{len(turns) / 2, len(turns) * 3 / 4, len(turns) / 4} {
+		add(index)
+	}
+	for index := range turns {
 		add(index)
 	}
 	indices := make([]int, 0, len(selected))

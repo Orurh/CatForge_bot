@@ -110,7 +110,9 @@ func (g *Gateway) Generate(ctx context.Context, request GenerationRequest) (gene
 func (g *Gateway) call(ctx context.Context, provider Provider, prompt Prompt) (ProviderResult, error) {
 	callCtx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
-	return provider.Generate(callCtx, prompt)
+	result, err := provider.Generate(callCtx, prompt)
+	result.Text = censorProfanity(result.Text)
+	return result, err
 }
 
 func (g *Gateway) record(ctx context.Context, request GenerationRequest, provider Provider, result ProviderResult, started time.Time, fallback, blocked bool, generationErr error) {

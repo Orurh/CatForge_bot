@@ -12,8 +12,8 @@ import (
 func TestFormatFightOutcomeUsesExternalQueueText(t *testing.T) {
 	t.Parallel()
 	cat := &domain.Cat{ID: 10, Name: "Барсик"}
-	waiting := formatFightOutcome(app.FightOutcome{Status: domain.FightQueueWaiting, Cat: cat})
-	canceled := formatFightOutcome(app.FightOutcome{Status: domain.FightQueueCanceled, Cat: cat})
+	waiting := FormatFightOutcome(app.FightOutcome{Status: domain.FightQueueWaiting, Cat: cat})
+	canceled := FormatFightOutcome(app.FightOutcome{Status: domain.FightQueueCanceled, Cat: cat})
 	if !strings.Contains(waiting, "Барсик") || !strings.Contains(waiting, "/fight") {
 		t.Fatalf("unexpected waiting text: %q", waiting)
 	}
@@ -59,7 +59,7 @@ func TestFormatFinishedFightIncludesWinnerAndRivalry(t *testing.T) {
 	t.Parallel()
 	waiter := &domain.Cat{ID: 10, Name: "Барсик", Level: 4}
 	newcomer := &domain.Cat{ID: 20, Name: "Батон", Level: 2}
-	text := formatFightOutcome(app.FightOutcome{
+	text := FormatFightOutcome(app.FightOutcome{
 		Status: domain.FightQueueMatched, Cat: newcomer, Opponent: waiter, Seed: 42, Rivalry: 7,
 		Stats: domain.FightStats{CatAWins: 4, CatALosses: 2, CatBWins: 3, CatBLosses: 1, PairCatAWins: 1, PairCatBWins: 2},
 		Result: domain.FightResult{
@@ -72,11 +72,11 @@ func TestFormatFinishedFightIncludesWinnerAndRivalry(t *testing.T) {
 		},
 	})
 	for _, fragment := range []string{
-		"Барсик", "Батон", "4 ед. сил", "−5 ед. сил", "КРИТ",
-		"📊 ИТОГ БОЯ\n├ Раунды: 3",
-		"├ Барсик\n│  ├ Победы: 4\n│  └ Поражения: 2",
-		"😾 ЛИЧНЫЕ ВСТРЕЧИ\n├ Барсик: 1\n├ Батон: 2",
-		"└ Соперничество: 7",
+		"Барсик", "Батон", "КРИТ",
+		"📊 Раунды: 3 · Криты: 1 · Уклонения: 0",
+		"Победы/поражения: Барсик 4/2",
+		"😾 Личный счёт: Барсик 1:2 Батон",
+		"Соперничество: 7",
 	} {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("fight text %q does not contain %q", text, fragment)
@@ -88,7 +88,7 @@ func TestSelectFightTurnIndicesKeepsOpeningCritsAndFinish(t *testing.T) {
 	t.Parallel()
 	turns := make([]domain.FightTurn, 20)
 	for index := range turns {
-		turns[index] = domain.FightTurn{Round: index/2 + 1}
+		turns[index] = domain.FightTurn{Round: index/2 + 1, Damage: 5, DefenderHPAfter: 20}
 	}
 	turns[11].Crit = true
 	indices := selectFightTurnIndices(turns, 8)
@@ -134,5 +134,46 @@ func TestLongFightNarrativeFitsTelegramMessage(t *testing.T) {
 	}
 	if !strings.Contains(text, "…") || !strings.Contains(text, "ФИНАЛЬНЫЙ КРИТ") {
 		t.Fatalf("long fight lost its collapsed middle or finishing turn: %q", text)
+	}
+}
+
+func TestFightHighlightsKeepDodgeAndDoNotInventCrits(t *testing.T) {
+	turns := make([]domain.FightTurn, 22)
+	for i := range turns {
+		turns[i] = domain.FightTurn{AttackerCatID: 1, DefenderCatID: 2, Damage: 200, DefenderHPAfter: 100}
+	}
+	turns[15].Damage = 0
+	turns[21].DefenderHPAfter = 0
+	indices := selectFightTurnIndices(turns, 8)
+	seen := false
+	for i, index := range indices {
+		if index == 15 {
+			seen = true
+		}
+		if i > 0 && indices[i-1] >= index {
+			t.Fatal("highlights not chronological")
+		}
+	}
+	if !seen || indices[len(indices)-1] != 21 {
+		t.Fatalf("lost dodge/finish: %v", indices)
+	}
+	text := FormatFightOutcome(app.FightOutcome{Status: domain.FightQueueMatched, Opponent: &domain.Cat{ID: 1, Name: "A"}, Cat: &domain.Cat{ID: 2, Name: "B"}, Result: domain.FightResult{WinnerCatID: 1, LoserCatID: 2, Rounds: 11, FinalHPA: 100, Turns: turns}})
+	if !strings.Contains(text, "Криты: 0 · Уклонения: 1") || strings.Contains(text, "КРИТ!") {
+		t.Fatalf("invented/lost special moves: %s", text)
+	}
+}
+
+func TestBoldFightReportFitsTelegram(t *testing.T) {
+	turns := make([]domain.FightTurn, 22)
+	for i := range turns {
+		turns[i] = domain.FightTurn{Round: i/2 + 1, AttackerCatID: 1 + int64(i%2), DefenderCatID: 2 - int64(i%2), Damage: 222, DefenderHPAfter: 1000, Crit: i%3 == 0}
+	}
+	turns[3].Damage = 0
+	turns[21].DefenderHPAfter = 0
+	for seed := uint64(0); seed < 100; seed++ {
+		text := FormatFightOutcome(app.FightOutcome{Status: domain.FightQueueMatched, Seed: seed, Yard: &domain.Yard{HumorMode: domain.HumorBold}, Opponent: &domain.Cat{ID: 1, Name: strings.Repeat("А", 24), Level: 8}, Cat: &domain.Cat{ID: 2, Name: strings.Repeat("Б", 24), Level: 5}, Result: domain.FightResult{WinnerCatID: 2, LoserCatID: 1, Rounds: 11, FinalHPB: 500, Turns: turns}})
+		if utf8.RuneCountInString(text) > 4096 {
+			t.Fatalf("seed=%d runes=%d", seed, utf8.RuneCountInString(text))
+		}
 	}
 }
