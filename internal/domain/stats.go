@@ -19,13 +19,13 @@ func LevelUpDelta(b Breed) StatDelta {
 	// Детерминированная прокачка: легко балансить, легко тестировать.
 	switch b {
 	case BreedMaineCoon: // "танк"
-		return StatDelta{HP: 6, ATK: 1, DEF: 2, SPD: 1}
+		return StatDelta{HP: 4, ATK: 2, DEF: 2, SPD: 1}
 	case BreedSiamese: // "скорость"
-		return StatDelta{HP: 2, ATK: 2, DEF: 1, SPD: 3}
+		return StatDelta{HP: 4, ATK: 2, DEF: 1, SPD: 2}
 	case BreedBritish: // "защита"
-		return StatDelta{HP: 3, ATK: 1, DEF: 3, SPD: 1}
+		return StatDelta{HP: 3, ATK: 2, DEF: 2, SPD: 1}
 	case BreedBengal: // "урон"
-		return StatDelta{HP: 2, ATK: 3, DEF: 1, SPD: 2}
+		return StatDelta{HP: 3, ATK: 2, DEF: 1, SPD: 2}
 	default:
 		return StatDelta{HP: 3, ATK: 2, DEF: 2, SPD: 2}
 	}
@@ -47,4 +47,33 @@ func ApplyLevelUps(c *Cat, levels int) StatDelta {
 		total.Add(step)
 	}
 	return total
+}
+
+type XPProgress struct {
+	XPGain       int64
+	LevelsGained int
+	StatsGained  StatDelta
+	Level        int
+	XP           int64
+}
+
+// GrantXP is retained for legacy simulations. Live social rewards use the
+// authoritative C++ Progress RPC, including physical stats and unlocks.
+func GrantXP(c *Cat, gain int64) XPProgress {
+	progress := XPProgress{XPGain: gain}
+	if c == nil || gain <= 0 {
+		if c != nil {
+			progress.Level, progress.XP = c.Level, c.XP
+		}
+		return progress
+	}
+	c.XP += gain
+	for c.XP >= int64(c.Level)*100 {
+		c.XP -= int64(c.Level) * 100
+		c.Level++
+		progress.LevelsGained++
+		progress.StatsGained.Add(ApplyLevelUps(c, 1))
+	}
+	progress.Level, progress.XP = c.Level, c.XP
+	return progress
 }

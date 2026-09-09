@@ -7,11 +7,23 @@ import (
 )
 
 type ProfileService struct {
-	cats CatRepository
+	cats   CatRepository
+	fights FightRepository
 }
 
-func NewProfileService(cats CatRepository) *ProfileService {
-	return &ProfileService{cats: cats}
+func NewProfileService(cats CatRepository, fights ...FightRepository) *ProfileService {
+	service := &ProfileService{cats: cats}
+	if len(fights) > 0 {
+		service.fights = fights[0]
+	}
+	return service
+}
+
+func (s *ProfileService) ArenaStats(ctx context.Context, catID int64) (domain.ArenaStats, error) {
+	if s.fights == nil {
+		return domain.ArenaStats{}, nil
+	}
+	return s.fights.CatStats(ctx, catID)
 }
 
 func (s *ProfileService) GetCat(ctx context.Context, userID int64) (*domain.Cat, error) {

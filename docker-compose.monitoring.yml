@@ -1,0 +1,120 @@
+# Overlay: docker compose -f docker-compose.dev.yml -f docker-compose.monitoring.yml up -d
+x-monitoring: &monitoring
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  labels:
+    catforge.logs: "true"
+
+services:
+  bot:
+    <<: *monitoring
+    environment:
+      METRICS_ADDR: 0.0.0.0:9091
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backups:/backups:ro
+    # Backup archives remain private; this group allows listing filenames/mtimes only.
+    group_add: !override ["${MONITORING_BACKUP_GID:-1000}"]
+  postgres:
+    <<: *monitoring
+  game-engine:
+    <<: *monitoring
+
+  prometheus:
+    <<: *monitoring
+    image: prom/prometheus:v3.14.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=5GB
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    mem_limit: 768m
+
+  alertmanager:
+    <<: *monitoring
+    image: prom/alertmanager:v0.34.0
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager", "--cluster.listen-address="]
+    volumes:
+      - ./deploy/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports: ["127.0.0.1:9093:9093"]
+    mem_limit: 128m
+
+  grafana:
+    <<: *monitoring
+    image: grafana/grafana:13.2.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    secrets: [grafana_password]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:3000:3000"]
+    mem_limit: 512m
+
+  loki:
+    <<: *monitoring
+    image: grafana/loki:3.7.7
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./deploy/monitoring/loki.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    mem_limit: 768m
+
+  alloy:
+    <<: *monitoring
+    image: grafana/alloy:v1.19.2
+    user: "0:0"
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy", "/etc/alloy/config.alloy", "--disable-reporting"]
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-catforge-bot}
+    volumes:
+      - ./deploy/monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy
+    mem_limit: 384m
+
+  node-exporter:
+    <<: *monitoring
+    image: prom/node-exporter:v1.12.1
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($$|/)
+    volumes: ["/:/host:ro,rslave"]
+    pid: host
+    mem_limit: 128m
+
+  blackbox:
+    <<: *monitoring
+    image: prom/blackbox-exporter:v0.28.0
+    command: ["--config.file=/etc/blackbox/config.yml"]
+    volumes: ["./deploy/monitoring/blackbox.yml:/etc/blackbox/config.yml:ro"]
+    mem_limit: 64m
+
+secrets:
+  grafana_password:
+    file: ./.monitoring-secrets/grafana_password
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+  loki_data:
+  alloy_data:

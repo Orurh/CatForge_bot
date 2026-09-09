@@ -1,0 +1,7 @@
+-- +goose Up
+ALTER TABLE cats
+  ADD COLUMN IF NOT EXISTS coins BIGINT NOT NULL DEFAULT 0;
+
+-- +goose Down
+ALTER TABLE cats
+  DROP COLUMN IF EXISTS coins;

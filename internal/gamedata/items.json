@@ -1,0 +1,219 @@
+[
+  {
+    "id": "rat_tooth",
+    "name": "Крысиный зуб",
+    "slot": "claws",
+    "rarity": "rare",
+    "location": "alley",
+    "base_stats": {
+      "ATK": 3
+    },
+    "per_level_stats": {
+      "ATK": 1
+    },
+    "effect_id": "gnaw",
+    "ability": "Прогрызть: помогает со вскрытием ящиков. 🔥 Крит тренировки +2 п.п. (5% → 7%).",
+    "feline_bonus": {
+      "claws_tenth_mm": 2
+    },
+    "training_crit_bonus_percent": 2
+  },
+  {
+    "id": "janitor_glove",
+    "name": "Перчатка дворника",
+    "slot": "claws",
+    "rarity": "rare",
+    "location": "alley",
+    "base_stats": {
+      "ATK": 4
+    },
+    "per_level_stats": {
+      "ATK": 1
+    },
+    "effect_id": "service_entry",
+    "ability": "Служебный вход: особый маршрут у рыбовоза.",
+    "feline_bonus": {
+      "claws_tenth_mm": 3
+    }
+  },
+  {
+    "id": "string_collar",
+    "name": "Ошейник из шнурка",
+    "slot": "collar",
+    "rarity": "common",
+    "location": "alley",
+    "base_stats": {
+      "HP": 6
+    },
+    "per_level_stats": {
+      "HP": 2
+    },
+    "effect_id": "steady",
+    "ability": "Не зацепиться: помогает безопасно отвлекать.",
+    "feline_bonus": {
+      "weight_grams": 100
+    }
+  },
+  {
+    "id": "sour_cream_lid",
+    "name": "Крышка от сметаны",
+    "slot": "charm",
+    "rarity": "rare",
+    "location": "alley",
+    "base_stats": {
+      "SPD": 2
+    },
+    "per_level_stats": {
+      "SPD": 1
+    },
+    "effect_id": "lure",
+    "ability": "Приманка: помогает отвлекать противника.",
+    "feline_bonus": {
+      "whisker_span_mm": 5
+    }
+  },
+  {
+    "id": "antenna_shard",
+    "name": "Обломок антенны",
+    "slot": "claws",
+    "rarity": "common",
+    "location": "rooftop",
+    "base_stats": {
+      "ATK": 4
+    },
+    "per_level_stats": {
+      "ATK": 1
+    },
+    "effect_id": "probe",
+    "ability": "Щуп: помогает находить тайники.",
+    "feline_bonus": {
+      "whisker_span_mm": 5
+    }
+  },
+  {
+    "id": "pigeon_feather",
+    "name": "Голубиное перо",
+    "slot": "charm",
+    "rarity": "common",
+    "location": "rooftop",
+    "base_stats": {
+      "SPD": 3
+    },
+    "per_level_stats": {
+      "SPD": 1
+    },
+    "effect_id": "bird_knowledge",
+    "ability": "Знание противника: договориться с птицами у рыбовоза.",
+    "feline_bonus": {
+      "tail_mm": 5
+    }
+  },
+  {
+    "id": "dog_tag",
+    "name": "Собачий жетон",
+    "slot": "collar",
+    "rarity": "rare",
+    "location": "rooftop",
+    "base_stats": {
+      "DEF": 4
+    },
+    "per_level_stats": {
+      "DEF": 1
+    },
+    "effect_id": "dog_identity",
+    "ability": "Прикинуться своим: особое действие против пса.",
+    "feline_bonus": {
+      "weight_grams": 100
+    }
+  },
+  {
+    "id": "shoelace",
+    "name": "Кроссовочный шнурок",
+    "slot": "charm",
+    "rarity": "epic",
+    "location": "rooftop",
+    "base_stats": {
+      "SPD": 4
+    },
+    "per_level_stats": {
+      "SPD": 1
+    },
+    "effect_id": "parkour",
+    "ability": "Паркур: открывает маршрут через крышу.",
+    "feline_bonus": {
+      "tail_mm": 10
+    }
+  },
+  {
+    "id": "lynx_claw",
+    "name": "Коготь рыси",
+    "slot": "claws",
+    "rarity": "rare",
+    "location": "park",
+    "base_stats": {
+      "ATK": 5
+    },
+    "per_level_stats": {
+      "ATK": 1
+    },
+    "effect_id": "intimidate",
+    "ability": "Угроза: помогает отогнать пса.",
+    "feline_bonus": {
+      "claws_tenth_mm": 3
+    }
+  },
+  {
+    "id": "furry_collar",
+    "name": "Мохнатый ошейник",
+    "slot": "collar",
+    "rarity": "rare",
+    "location": "park",
+    "base_stats": {
+      "HP": 8
+    },
+    "per_level_stats": {
+      "HP": 2
+    },
+    "effect_id": "cushion",
+    "ability": "Мягкая посадка: смягчает неудачу с ящиком.",
+    "feline_bonus": {
+      "weight_grams": 100
+    }
+  },
+  {
+    "id": "old_lynx_eye",
+    "name": "Глаз старой рыси",
+    "slot": "charm",
+    "rarity": "epic",
+    "location": "park",
+    "base_stats": {
+      "SPD": 5
+    },
+    "per_level_stats": {
+      "SPD": 1
+    },
+    "effect_id": "foresight",
+    "ability": "Дурное предчувствие: обнаруживает засаду пса.",
+    "feline_bonus": {
+      "whisker_span_mm": 10
+    }
+  },
+  {
+    "id": "cone_of_fate",
+    "name": "Шишка Судьбы",
+    "slot": "charm",
+    "rarity": "epic",
+    "location": "park",
+    "base_stats": {
+      "DEF": 3
+    },
+    "per_level_stats": {
+      "DEF": 1
+    },
+    "effect_id": "fate",
+    "ability": "Ну а вдруг: редкий шанс спасти провал.",
+    "feline_bonus": {
+      "whisker_span_mm": 5
+    }
+  }
+]

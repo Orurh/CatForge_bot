@@ -1,0 +1,12 @@
+services:
+  bot:
+    environment:
+      AI_PROVIDER: codex
+      AI_API_KEY: ""
+      AI_MODEL: gpt-5.6-luna
+      AI_TIMEOUT: 30s
+      CODEX_BRIDGE_SOCKET: /run/codex-bridge/bridge.sock
+    group_add: !override
+      - "${CODEX_BRIDGE_GID:?Set CODEX_BRIDGE_GID to the bridge host group}"
+    volumes:
+      - ./.codex-bridge:/run/codex-bridge:ro

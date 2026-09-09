@@ -1,0 +1,179 @@
+groups:
+  - name: catforge
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Scrape target {{ $labels.job }} is down'
+          description: 'Inspect docker compose ps and service logs; metrics endpoint has failed for 2 minutes.'
+      - alert: BotNotReady
+        expr: probe_success{job="readiness"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: 'CatForge readiness check is failing'
+          description: 'Check bot, PostgreSQL and engine; /readyz must return 200.'
+      - alert: DependencyDown
+        expr: catforge_dependency_up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: '{{ $labels.dependency }} is unavailable or incompatible'
+          description: 'Check service logs and matching engine rules version.'
+      - alert: DependencyProbeStalled
+        expr: time() - catforge_dependency_probe_timestamp_seconds > 60
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Dependency monitoring loop is stalled'
+          description: 'Inspect bot goroutines and DB pool saturation.'
+      - alert: PollingStalled
+        expr: (time() - catforge_last_success_timestamp_seconds{component="telegram",operation="getUpdates"} > 120) and on(job,instance) (catforge_telegram_polling_enabled == 1)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Telegram polling has no successful cycles'
+          description: 'Check Telegram connectivity and duplicate bot instances. Idle successful polls count as healthy.'
+      - alert: WorkerStalled
+        expr: time() - catforge_last_success_timestamp_seconds{component="worker"} > 180
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Worker {{ $labels.operation }} stopped completing successfully'
+          description: 'Check DB, engine and worker logs; empty successful cycles count as healthy.'
+      - alert: TelegramErrors
+        expr: sum(increase(catforge_operations_total{component="telegram",outcome="error"}[5m])) >= 5
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Repeated Telegram API or update processing errors'
+          description: 'Inspect bot logs; player silence alone does not trigger this rule.'
+      - alert: AIFallbackHigh
+        expr: (sum(increase(catforge_operations_total{component="ai",outcome=~"fallback|error"}[10m])) / clamp_min(sum(increase(catforge_operations_total{component="ai",outcome=~"primary|fallback|error"}[10m])), 1) > 0.3) and (sum(increase(catforge_operations_total{component="ai",outcome=~"primary|fallback|error"}[10m])) >= 5) and on() (catforge_ai_primary_enabled == 1)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: 'AI fallback/error share exceeds 30%'
+          description: 'Check provider availability and quotas. Procedural-only mode is excluded.'
+      - alert: EngineErrors
+        expr: sum(increase(catforge_operations_total{component="engine",outcome!="OK"}[5m])) >= 5
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Repeated C++ RPC errors'
+          description: 'Inspect engine logs and rules compatibility. Progress includes readiness probes.'
+      - alert: EngineSlow
+        expr: histogram_quantile(0.95, sum by(le) (rate(catforge_operation_duration_seconds_bucket{component="engine",operation=~"Train|Fight|ResolveYardEvent"}[10m]))) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Game RPC p95 latency exceeds one second'
+          description: 'Check server CPU and engine resource usage.'
+      - alert: ApplicationErrors
+        expr: sum(increase(catforge_log_messages_total{level="error"}[5m])) >= 5
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Repeated application error logs'
+          description: 'Open the CatForge logs panel in Grafana and filter level=error.'
+      - alert: BackupStale
+        expr: time() - catforge_backup_last_success_timestamp_seconds > 86400
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: 'No database archive newer than 24 hours'
+          description: 'Run scripts/backup_db.sh and check the backup scheduler. Archive age does not prove offsite copy or restore validity.'
+      - alert: BackupDirectoryUnreadable
+        expr: catforge_backup_directory_readable == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Bot cannot inspect backup directory'
+          description: 'Run setup_monitoring.sh and set MONITORING_BACKUP_GID to the backup directory group.'
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes < 0.15) and on(instance,device,mountpoint) (node_filesystem_readonly == 0)
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Less than 15% disk space available at {{ $labels.mountpoint }}'
+          description: 'Inspect Docker usage and retention; preserve database volumes and backups.'
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes < 0.05) and on(instance,device,mountpoint) (node_filesystem_readonly == 0)
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Less than 5% disk space available at {{ $labels.mountpoint }}'
+          description: 'Free disk space before PostgreSQL or log storage stops accepting writes.'
+      - alert: MemoryPressure
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Less than 10% server RAM available'
+          description: 'Inspect docker stats and process memory usage.'
+      - alert: CPUHigh
+        expr: 1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.9
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Server CPU exceeds 90%'
+          description: 'Inspect processes and containers before increasing limits.'
+      - alert: DBPoolSaturated
+        expr: catforge_db_pool_connections{state="acquired"} / ignoring(state) catforge_db_pool_connections{state="max"} > 0.9
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: 'PostgreSQL client pool is saturated'
+          description: 'Inspect long-running transactions and blocked queries.'
+      - alert: LogDeliveryErrors
+        expr: sum(increase(loki_write_dropped_entries_total[5m])) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Alloy is dropping log entries'
+          description: 'Inspect Alloy and Loki logs, ingestion limits and disk availability.'
+      - alert: NotificationDeliveryErrors
+        expr: sum(increase(alertmanager_notifications_failed_total[5m])) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Alertmanager cannot deliver notifications'
+          description: 'Check the configured receiver and its credentials.'
+      - alert: LogPipelineStalled
+        expr: (sum(increase(loki_write_sent_entries_total[15m])) == 0) or absent(loki_write_sent_entries_total{job="alloy"})
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 'No log deliveries observed from Alloy'
+          description: 'Bot emits a heartbeat every five minutes. Check Docker discovery labels and Loki ingestion.'
+
+      - alert: PaymentNeedsReview
+        expr: catforge_payments_review_required > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Payment receipt requires review'
+          description: 'Inspect payments.review_reason and reconcile the Telegram receipt; do not delete financial records.'
+      - alert: PaymentThanksDelayed
+        expr: catforge_payment_thanks_oldest_age_seconds > 600
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Payment thank-you delivery is delayed'
+          description: 'The payment is saved. Check Telegram send errors and the payment worker.'
+      - alert: PaymentRefundPending
+        expr: catforge_payment_refunds_pending > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 'Refund request awaits confirmation'
+          description: 'Use payment-refund -reconcile to inspect Telegram history before another refund attempt.'
+      - alert: PaymentLedgerProbeFailed
+        expr: catforge_payment_probe_up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: 'Payment ledger monitoring failed'
+          description: 'Check PostgreSQL availability and the support payments migration.'

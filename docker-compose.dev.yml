@@ -1,12 +1,21 @@
 services:
+  game-engine:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: engine_cpp/Dockerfile
+    ports:
+      - "127.0.0.1:50051:50051"
+
   postgres:
+    restart: unless-stopped
     image: postgres:16
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,19 +25,42 @@ services:
       retries: 30
 
   bot:
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/bot", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     build: .
     environment:
       APP_ENV: ${APP_ENV:-dev}
+      TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
       HTTP_ADDR: 0.0.0.0:8080
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
-      BOT_USERNAME: ${BOT_USERNAME} 
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      PAYMENT_SUPPORT_CONTACT: ${PAYMENT_SUPPORT_CONTACT:-}
+      BOT_USERNAME: ${BOT_USERNAME}
       WEBHOOK_PATH: ${WEBHOOK_PATH:-/tg/webhook}
       DATABASE_URL: ${DATABASE_URL}
+      GAME_ENGINE_ADDR: ${GAME_ENGINE_ADDR:-game-engine:50051}
+      AI_PROVIDER: ${AI_PROVIDER:-procedural}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_TIMEOUT: ${AI_TIMEOUT:-5s}
+      CODEX_BRIDGE_SOCKET: /run/codex-bridge/bridge.sock
       MIGRATIONS_DIR: /app/migrations
+    group_add:
+      - "${CODEX_BRIDGE_GID:-1000}"
+    volumes:
+      - ./.codex-bridge:/run/codex-bridge:ro
     depends_on:
       postgres:
         condition: service_healthy
+      game-engine:
+        condition: service_started
     ports:
       - "8080:8080"
 

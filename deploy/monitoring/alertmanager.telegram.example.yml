@@ -1,0 +1,18 @@
+# Copy to .monitoring-secrets/alertmanager.yml and set YOUR_CHAT_ID.
+# Token must be saved in .monitoring-secrets/telegram_token, never this file.
+global:
+  resolve_timeout: 5m
+route:
+  receiver: telegram
+  group_by: [alertname, job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /run/secrets/telegram_token
+        chat_id: 0 # Replace with the numeric destination chat ID.
+        send_resolved: true
+        parse_mode: ''
+        message: '{{ range .Alerts }}[{{ .Status }}] {{ .Labels.alertname }}: {{ .Annotations.summary }} — {{ .Annotations.description }}{{ "\n" }}{{ end }}'

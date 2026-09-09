@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 5m
+route:
+  receiver: local
+  group_by: [alertname, job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+# Visible in Alertmanager and Grafana. External delivery requires a receiver.
+receivers:
+  - name: local
+inhibit_rules:
+  - source_matchers: ['alertname="TargetDown"', 'job="catforge"']
+    target_matchers: ['alertname=~"DependencyDown|DependencyProbeStalled|PollingStalled|WorkerStalled|BackupStale|BackupDirectoryUnreadable"']
+    equal: [application]
