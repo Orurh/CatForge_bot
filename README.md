@@ -289,3 +289,18 @@ Prometheus + Grafana + Loki/Alloy + Alertmanager, готовый дашборд 
 Используйте `docker-compose.monitoring.yml` вместе с выбранным Compose-файлом бота.
 
 Текущая формула тренировки и таймеры энергии: [Training v2](docs/TRAINING_V2.md).
+
+## License
+
+CatForge source code is source-available under the PolyForm Shield
+License 1.0.0. See [LICENSE](LICENSE).
+
+Use of the source code to provide products or services that compete
+with CatForge is not permitted under that license.
+
+CatForge branding and creative assets are not licensed under the
+software license. See [TRADEMARKS.md](TRADEMARKS.md) and
+[ASSETS_LICENSE.md](ASSETS_LICENSE.md).
+
+Separate commercial licenses may be available.
+See [COMMERCIAL.md](COMMERCIAL.md).
