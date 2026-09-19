@@ -164,6 +164,35 @@ class UpdateTests(unittest.TestCase):
                 self.host.deploy(tag)
         self.assertEqual(self.host.calls, [])
 
+    def test_main_sha_fetches_only_main(self):
+        self.host.deploy(REVISION, main_sha=True)
+        self.assertIn(('git', 'fetch', '--no-tags', 'origin', 'refs/heads/main'), self.host.calls)
+
+    def test_host_local_overlay_is_preserved_without_tracking_in_git(self):
+        self.host.files.append('.deploy/proxy.yml')
+        (self.host.state / 'proxy.yml').write_text('services: {}\n')
+        self.host.deploy(REVISION, main_sha=True)
+        tracked = next(c for c in self.host.calls if c[:2] == ('git', 'ls-files'))
+        self.assertNotIn('.deploy/proxy.yml', tracked)
+        self.assertTrue((self.host.state / 'proxy.yml').exists())
+
+    def test_missing_host_overlay_fails_before_downtime(self):
+        self.host.files.append('.deploy/missing.yml')
+        with self.assertRaisesRegex(update.DeploymentError, 'Missing host-local'):
+            self.host.deploy(REVISION, main_sha=True)
+        self.assertFalse(any('stop' in c for c in self.host.calls))
+
+    def test_main_moving_since_selection_does_not_stop_bot(self):
+        with self.assertRaisesRegex(update.DeploymentError, 'main moved'):
+            self.host.deploy(PREVIOUS, main_sha=True)
+        self.assertFalse(any('stop' in c or 'pull' in c for c in self.host.calls))
+
+    def test_main_sha_rejects_arbitrary_refs(self):
+        for ref in ('main', 'v1', '--upload-pack=bad', 'a' * 39):
+            with self.subTest(ref=ref), self.assertRaises(update.DeploymentError):
+                self.host.deploy(ref, main_sha=True)
+        self.assertEqual(self.host.calls, [])
+
     def test_backup_is_published_only_after_validation_and_never_overwritten(self):
         output = self.host.root / 'backup.dump'
         compose = ['docker', 'compose', '-p', 'test', '-f', 'test.yml']

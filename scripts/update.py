@@ -123,15 +123,23 @@ class Updater:
         if not old_db or old_db != new_db:
             raise DeploymentError('Release changes DATABASE_URL; refusing to migrate another database')
 
-    def deploy(self, tag):
-        if not re.fullmatch(r'v[0-9][A-Za-z0-9._-]*', tag):
+    def deploy(self, tag, main_sha=False):
+        if main_sha and not re.fullmatch(r'[0-9a-f]{40}', tag):
+            raise DeploymentError('Expected a full main commit SHA')
+        if not main_sha and not re.fullmatch(r'v[0-9][A-Za-z0-9._-]*', tag):
             raise DeploymentError('Use a version tag, for example v0.1.0-beta.1')
         pending = self.state / 'pending.json'
         if pending.exists():
             raise DeploymentError('Unfinished deployment: inspect .deploy/pending.json and docs/DEPLOYMENT.md')
         if self.run('git', 'status', '--porcelain'):
             raise DeploymentError('Checkout has local changes; use a clean server checkout')
-        self.run('git', 'ls-files', '--error-unmatch', '--', *self.files)
+        # Host-specific overlays survive checkouts in the ignored state directory.
+        tracked_files = [file for file in self.files if Path(file).parts[0] != '.deploy']
+        if tracked_files:
+            self.run('git', 'ls-files', '--error-unmatch', '--', *tracked_files)
+        for file in self.files:
+            if Path(file).parts[0] == '.deploy' and not (self.root / file).is_file():
+                raise DeploymentError('Missing host-local Compose overlay')
         previous_revision = self.run('git', 'rev-parse', 'HEAD')
         previous_ref = self.run('git', 'rev-parse', '--abbrev-ref', 'HEAD')
         if previous_ref == 'HEAD':
@@ -149,10 +157,13 @@ class Updater:
         if architecture not in ('x86_64', 'amd64'):
             raise DeploymentError('Published images currently require an amd64 Docker host')
         print(f'Fetching {tag} and both release images; the bot is still running.', flush=True)
-        self.run('git', 'fetch', '--no-tags', 'origin', f'refs/tags/{tag}')
+        self.run('git', 'fetch', '--no-tags', 'origin',
+                 'refs/heads/main' if main_sha else f'refs/tags/{tag}')
         revision = self.run('git', 'rev-parse', 'FETCH_HEAD^{commit}')
         if not re.fullmatch(r'[0-9a-f]{40}', revision):
             raise DeploymentError('Invalid release commit')
+        if main_sha and revision != tag:
+            raise DeploymentError('main moved since CI selection; wait for the next poll')
         images = {service: self.image(component, revision)
                   for service, component in (('bot', 'bot'), ('game-engine', 'engine'))}
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
@@ -222,6 +233,7 @@ class Updater:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('tag', help='Published Git version tag, e.g. v0.1.0-beta.1')
+    parser.add_argument('--main-sha', action='store_true', help='Require the exact current main SHA')
     args = parser.parse_args()
     os.umask(0o077)
     root = Path(__file__).resolve().parent.parent
@@ -238,7 +250,7 @@ def main():
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise DeploymentError('Another update is already running')
-            Updater(root).deploy(args.tag)
+            Updater(root).deploy(args.tag, main_sha=args.main_sha)
     except (Exception, KeyboardInterrupt) as error:
         print(f'Update failed: {error}', file=sys.stderr)
         return 1

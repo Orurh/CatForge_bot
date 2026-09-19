@@ -56,7 +56,7 @@ func TestEnergyUXStatesAndRecovery(t *testing.T) {
 		}
 	}
 	text := EnergyRecoveryText(0, now, now)
-	for _, want := range []string{"6ч 40м", "13ч 20м", "энергия больше не копится"} {
+	for _, want := range []string{"6ч 40м", "13ч 20м", "полный запас через"} {
 		if !strings.Contains(text, want) {
 			t.Fatal(text)
 		}

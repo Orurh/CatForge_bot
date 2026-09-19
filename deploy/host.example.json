@@ -1,5 +1,6 @@
 {
-  "image_prefix": "ghcr.io/OWNER/catforge-bot",
+  "repository": "Orurh/CatForge_bot",
+  "image_prefix": "ghcr.io/orurh/catforge_bot",
   "project": "catforge-bot",
   "compose_files": ["docker-compose.dev.yml", "docker-compose.monitoring.yml"],
   "wait_seconds": 180

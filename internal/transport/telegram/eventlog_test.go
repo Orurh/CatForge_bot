@@ -102,7 +102,7 @@ func TestTrainingGroupExplainsBothEnergyDeadlines(t *testing.T) {
 		want    []string
 	}{
 		{49, domain.TrainingNotEnoughEnergy, false, now.Add(-7 * time.Minute), []string{"Тренироваться можно с 50", "через 1м", "До полного запаса"}},
-		{0, domain.TrainingOK, true, now, []string{"КРИТИЧЕСКАЯ ТРЕНИРОВКА", "+100% базового XP", "6ч 40м", "13ч 20м", "энергия больше не копится"}},
+		{0, domain.TrainingOK, true, now, []string{"КРИТИЧЕСКАЯ ТРЕНИРОВКА", "+100% базового XP", "6ч 40м", "13ч 20м", "полный запас через"}},
 	} {
 		var sent string
 		sender := NewSender("test-token", logx.Nop())
