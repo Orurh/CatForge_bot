@@ -27,6 +27,8 @@ jobs:
           cache: true
       - name: Validate GitHub Actions workflow
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - name: Prepare placeholder environment for Compose validation
+        run: install -m 600 .env.example .env
       - name: Build both images and test with PostgreSQL and C++ engine
         run: bash scripts/ci.sh
       - name: Save the verified release images
