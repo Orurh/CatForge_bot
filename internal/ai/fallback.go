@@ -126,8 +126,9 @@ func fallbackTrainingNarrative(request GenerationRequest) string {
 		story += " " + gamecontent.Render("fallback.training.rival", selector, training)
 	} else if relationship, tone, ok := dominantRelationship(request.Cat.Name, request.Relationships); ok && (tone == "friendship" || tone == "respect") {
 		story += " " + gamecontent.Render("fallback.training."+tone, selector, relationship)
-	} else if cat.Trait == domain.TraitLazy {
-		story += " " + gamecontent.Render("fallback.training.lazy", selector, nil)
+	}
+	if domain.IsValidTrait(cat.Trait) {
+		story += " " + gamecontent.Render("trait."+string(cat.Trait)+".reaction", selector, nil)
 	}
 	return story
 }
@@ -143,11 +144,20 @@ type relationshipFallbackData struct {
 
 func fallbackReply(request GenerationRequest) (string, any) {
 	if request.Type == GenerationHumanReplyToCat || request.Type == GenerationCatReply {
+		message := strings.ToLower(request.UserMessage)
+		if domain.IsValidTrait(request.Cat.Trait) && strings.Contains(message, "корм") &&
+			(strings.Contains(message, "купил") || strings.Contains(message, "принёс") || strings.Contains(message, "принес")) {
+			return "fallback.food." + string(request.Cat.Trait), nil
+		}
 		contextText := strings.ToLower(request.PreviousMessage + " " + request.UserMessage)
 		for _, relationship := range request.Relationships {
 			data, tone, ok := relationshipForCat(request.Cat.Name, relationship)
 			if ok && tone != "" && strings.Contains(contextText, strings.ToLower(data.OtherCatName)) {
-				return "fallback.relationship_reply." + tone, data
+				key := "fallback.relationship_reply." + tone
+				if domain.IsValidTrait(request.Cat.Trait) {
+					key += "." + string(request.Cat.Trait)
+				}
+				return key, data
 			}
 		}
 	}
@@ -242,9 +252,6 @@ func fallbackAutonomousEvent(request GenerationRequest) string {
 	story := ""
 	if domain.YardEventOutcomeTier(event.OutcomeTier).IsSuccess() {
 		slug := traitContentSlug(cat.Trait)
-		if slug == "default" {
-			slug = "sleepy"
-		}
 		story = gamecontent.Render(prefix+"autonomous.success."+slug, uint64(event.TeamScore), nil)
 	} else {
 		story = gamecontent.Render(prefix+"autonomous.failure", uint64(event.TeamScore), nil)
@@ -310,23 +317,21 @@ func fallbackReplyKey(kind GenerationType, trait domain.Trait, humor HumorMode) 
 }
 
 func traitContentSlug(trait domain.Trait) string {
-	switch trait {
-	case domain.TraitLazy, domain.TraitBully, domain.TraitPhilosopher, domain.TraitNeat, domain.TraitSleepy:
+	if domain.IsValidTrait(trait) {
 		return string(trait)
-	default:
-		return "default"
 	}
+	return "default"
 }
 
 func fallbackEmotion(trait domain.Trait) string {
 	switch trait {
-	case domain.TraitBully:
+	case domain.TraitBully, domain.TraitCunning, domain.TraitArrogant:
 		return "smug"
-	case domain.TraitPhilosopher:
-		return "thoughtful"
-	case domain.TraitNeat:
-		return "judging"
-	case domain.TraitLazy, domain.TraitSleepy:
+	case domain.TraitVeteran:
+		return "calm"
+	case domain.TraitAngry:
+		return "angry"
+	case domain.TraitLazy:
 		return "sleepy"
 	default:
 		return "neutral"

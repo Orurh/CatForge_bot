@@ -37,18 +37,8 @@ func trainingEncounterKey(enc domain.Encounter) string {
 }
 
 func traitReactionKey(trait domain.Trait) string {
-	switch trait {
-	case domain.TraitLazy:
-		return "trait.lazy.reaction"
-	case domain.TraitBully:
-		return "trait.bully.reaction"
-	case domain.TraitPhilosopher:
-		return "trait.philosopher.reaction"
-	case domain.TraitNeat:
-		return "trait.neat.reaction"
-	case domain.TraitSleepy:
-		return "trait.sleepy.reaction"
-	default:
-		return ""
+	if domain.IsValidTrait(trait) {
+		return "trait." + string(trait) + ".reaction"
 	}
+	return ""
 }

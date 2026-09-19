@@ -41,7 +41,7 @@ func runAICheck() error {
 	usage := &probeUsage{}
 	gateway := ai.NewGateway(provider, nil, usage, cfg.AITimeout)
 	reply, err := gateway.GenerateCatReply(context.Background(), ai.GenerationRequest{
-		Cat:       ai.CatContext{Name: "Проверочный кот", Trait: domain.TraitNeat},
+		Cat:       ai.CatContext{Name: "Проверочный кот", Trait: domain.TraitCunning},
 		HumorMode: ai.HumorBold, UserMessage: question,
 	})
 	if err != nil {

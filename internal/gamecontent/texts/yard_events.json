@@ -60,57 +60,30 @@
     "Коробку вскрыли, изучили и заняли быстрее, чем кто-то успел сказать «не трогайте»."
   ],
   "yard_event.fish_truck.autonomous.success.bully": [
-    "Рыба добыта. Можете благодарить команду, но мы-то знаем, кто тут главная лапа."
+    "Рыба наша. Кто там говорил, что мы не справимся? Повтори погромче."
   ],
   "yard_event.fish_truck.autonomous.success.lazy": [
-    "Мы добыли рыбу. Самое сложное теперь — не устать от собственного успеха."
-  ],
-  "yard_event.fish_truck.autonomous.success.philosopher": [
-    "Сегодня мы искали рыбу, а нашли доказательство, что правильный Двор сильнее случайности."
-  ],
-  "yard_event.fish_truck.autonomous.success.neat": [
-    "Операция завершена. Рыба пересчитана, участники пока нет."
-  ],
-  "yard_event.fish_truck.autonomous.success.sleepy": [
-    "Рыба наша. Разбудите, если потребуется ещё одна блестящая операция."
+    "Рыбу добыли. Мою долю поближе, я уже набегался."
   ],
   "yard_event.fish_truck.autonomous.failure": [
     "Если кто спросит, мы вообще не знаем, что там была рыба.",
     "Прекрасная работа. Рыбу не добыли, зато опозорились всем составом."
   ],
   "yard_event.big_dog.autonomous.success.bully": [
-    "Пёс ушёл. Не выдержал конкуренции за звание главной проблемы района."
+    "Пёс ушёл. А лаял-то так, будто собирался остаться."
   ],
   "yard_event.big_dog.autonomous.success.lazy": [
-    "Пса прогнали. Я руководил лёжа, потому что талант не зависит от позы."
-  ],
-  "yard_event.big_dog.autonomous.success.philosopher": [
-    "Размер пасти решает многое. Но количество наглых котов иногда решает больше."
-  ],
-  "yard_event.big_dog.autonomous.success.neat": [
-    "Пёс удалён со двора. Шерсть после операции уберите по секторам."
-  ],
-  "yard_event.big_dog.autonomous.success.sleepy": [
-    "Пёс ушёл? Хорошо. Он слишком громко мешал мне спасать Двор во сне."
+    "Пёс ушёл. Теперь можно не вставать."
   ],
   "yard_event.big_dog.autonomous.failure": [
     "Мы не проиграли. Мы оставили псу ложное ощущение безопасности.",
     "В следующий раз нужен план получше. Или пёс поменьше."
   ],
   "yard_event.big_box.autonomous.success.bully": [
-    "Коробка вскрыта. Она держалась дольше, чем некоторые коты на арене."
+    "Коробку открыли. Она сопротивлялась лучше некоторых спорщиков."
   ],
   "yard_event.big_box.autonomous.success.lazy": [
-    "В коробке полно добычи. Принесите мою долю сюда, я уже удобно лежу."
-  ],
-  "yard_event.big_box.autonomous.success.philosopher": [
-    "Мы открыли коробку, но главный вопрос остался: кто теперь из неё вылезет?"
-  ],
-  "yard_event.big_box.autonomous.success.neat": [
-    "Коробка исследована. Содержимое рассортировано на моё и временно чужое."
-  ],
-  "yard_event.big_box.autonomous.success.sleepy": [
-    "Отличная коробка. Всё лишнее выньте, я в ней сплю."
+    "Коробку открыли. Я отдохну прямо тут."
   ],
   "yard_event.big_box.autonomous.failure": [
     "Это была разведка боем. Коробка пока об этом не знает.",
@@ -343,5 +316,50 @@
   ],
   "yard_event.result.reward_note": [
     "Очки Двора идут только в /week.\n🐟, 🦴 и 📎 — детали истории, а не валюты."
+  ],
+  "yard_event.fish_truck.autonomous.success.veteran": [
+    "Рыбу добыли. У заднего колеса всегда проще подлезть."
+  ],
+  "yard_event.big_dog.autonomous.success.veteran": [
+    "Пёс ушёл. Главное было не дать ему загнать нас в угол."
+  ],
+  "yard_event.big_box.autonomous.success.veteran": [
+    "Коробку открыли. Мокрый угол сразу видно, с него и начали."
+  ],
+  "yard_event.fish_truck.autonomous.success.cunning": [
+    "Рыбу добыли. Я тут просто стоял с самого удобного края."
+  ],
+  "yard_event.big_dog.autonomous.success.cunning": [
+    "Пёс ушёл. Кажется, он до сих пор думает, что сам так решил."
+  ],
+  "yard_event.big_box.autonomous.success.cunning": [
+    "Коробку открыли. Самый удобный угол я случайно занял первым."
+  ],
+  "yard_event.fish_truck.autonomous.success.arrogant": [
+    "Рыба наша. Лучший кусок сюда, остальное делите."
+  ],
+  "yard_event.big_dog.autonomous.success.arrogant": [
+    "Пёс ушёл. Теперь освободите мне проход."
+  ],
+  "yard_event.big_box.autonomous.success.arrogant": [
+    "Коробку открыли. Внутри моё место, добычу вынесите."
+  ],
+  "yard_event.fish_truck.autonomous.success.angry": [
+    "Рыбу добыли. Только не толкайтесь возле меня."
+  ],
+  "yard_event.big_dog.autonomous.success.angry": [
+    "Пёс ушёл. Наконец-то перестал орать под ухом."
+  ],
+  "yard_event.big_box.autonomous.success.angry": [
+    "Коробку открыли. Кто опять шуршит прямо возле уха?"
+  ],
+  "yard_event.fish_truck.autonomous.success.default": [
+    "Рыбу добыли. У заднего колеса всегда проще подлезть."
+  ],
+  "yard_event.big_dog.autonomous.success.default": [
+    "Пёс ушёл. Главное было не дать ему загнать нас в угол."
+  ],
+  "yard_event.big_box.autonomous.success.default": [
+    "Коробку открыли. Мокрый угол сразу видно, с него и начали."
   ]
 }

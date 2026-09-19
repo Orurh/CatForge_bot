@@ -33,7 +33,7 @@ func BuildPrompt(request GenerationRequest) Prompt {
 	if isBanterGeneration(request.Type) {
 		base = banterBaseRules
 	}
-	system := base + "\n" + generationRules(request.Type)
+	system := base + "\n" + traitRules + "\n" + generationRules(request.Type)
 	if request.HumorMode == HumorBold {
 		system += "\n" + boldRules
 	} else {

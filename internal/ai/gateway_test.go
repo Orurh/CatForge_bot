@@ -82,7 +82,7 @@ func TestBuildPromptTruncatesUntrustedMessage(t *testing.T) {
 	t.Parallel()
 	prompt := BuildPrompt(GenerationRequest{
 		Type:        GenerationCatReply,
-		Cat:         CatContext{Name: "Мур", Trait: domain.TraitPhilosopher},
+		Cat:         CatContext{Name: "Мур", Trait: domain.TraitVeteran},
 		UserMessage: strings.Repeat("я", maxUserMessageRunes+10),
 	})
 	if got := len([]rune(prompt.Request.UserMessage)); got != maxUserMessageRunes {

@@ -25,7 +25,7 @@ func TestExpeditionResultFromProtoMapsRareEnemy(t *testing.T) {
 
 func TestCatProtoRoundTrip(t *testing.T) {
 	t.Parallel()
-	want := domain.Cat{ID: 1, UserID: 2, StateVersion: 3, Name: "Мур", Breed: domain.BreedSiamese, Trait: "sleepy", Level: 4, XP: 55, Coins: 12, Energy: 80, HPBase: 40, ATKBase: 20, DEFBase: 18, SPDBase: 25}
+	want := domain.Cat{ID: 1, UserID: 2, StateVersion: 3, Name: "Мур", Breed: domain.BreedSiamese, Trait: "angry", Level: 4, XP: 55, Coins: 12, Energy: 80, HPBase: 40, ATKBase: 20, DEFBase: 18, SPDBase: 25}
 	want.Feline = want.PhysicalStats()
 	got := catFromProto(catToProto(want))
 	if !reflect.DeepEqual(got, want) {

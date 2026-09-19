@@ -34,16 +34,18 @@ func BreedRU(b domain.Breed) string {
 
 func TraitRU(t domain.Trait) string {
 	switch t {
-	case "lazy":
-		return "прокрастимятор"
-	case "bully":
-		return "царапыч"
-	case "philosopher":
-		return "философ"
-	case "neat":
-		return "облезлый"
-	case "sleepy":
-		return "хромуля"
+	case domain.TraitLazy:
+		return "лентяй"
+	case domain.TraitBully:
+		return "борзый"
+	case domain.TraitVeteran:
+		return "бывалый"
+	case domain.TraitCunning:
+		return "хитрый"
+	case domain.TraitArrogant:
+		return "наглый"
+	case domain.TraitAngry:
+		return "злой"
 	default:
 		return string(t)
 	}

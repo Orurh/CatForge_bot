@@ -23,8 +23,8 @@ func TestFormatYardSnapshotUsesVerticalStatBlocks(t *testing.T) {
 	for _, want := range []string{
 		"🏘 ДВОР\n«Друзья»",
 		"🐈 КОТЫ · 2",
-		"Барсик\n└ Характер: царапыч",
-		"Батон\n└ Характер: прокрастимятор",
+		"Барсик\n└ Характер: борзый",
+		"Батон\n└ Характер: лентяй",
 		"Барсик ↔ Батон\n├ 🤝 Дружба: 2\n├ ⚔️ Соперничество: 7\n└ 🏅 Уважение: 3",
 	} {
 		if !strings.Contains(text, want) {

@@ -33,5 +33,5 @@ relationships пары. Эти числа меняют тон, но не игр�
 
 Однострочные `fallback.followup.normal.*` и `fallback.followup.bold.*` — ответы
 кота человеку, который reply'нул на его раннюю реплику. Ключ заканчивается
-на trait (`lazy`, `bully`, `philosopher`, `neat`, `sleepy` или `default`). Имя и префикс
+на trait (`lazy`, `bully`, `veteran`, `cunning`, `arrogant`, `angry` или `default`). Имя и префикс
 тоже добавляет Telegram-слой.

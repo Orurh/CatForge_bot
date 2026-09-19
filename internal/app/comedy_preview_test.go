@@ -8,7 +8,7 @@ func TestTemporaryComedyPreview(t *testing.T){
  results:=[]map[string]any{}
  for slot:=int64(0);len(wanted)>0 && slot<100;slot++{
   topic,scene:=idleBanterScene(slot,true);if !wanted[topic]{continue};delete(wanted,topic)
-  request:=yardBanterRequest(&domain.Yard{HumorMode:domain.HumorBold},banterSpeaker{Name:"Игорь лох",Trait:domain.TraitNeat,HumorMode:domain.HumorBold},banterSpeaker{Name:"Джулиан",Trait:domain.TraitNeat,HumorMode:domain.HumorBold},&ai.YardBanterContext{Trigger:"idle",Topic:topic,Scene:scene,Variation:uint64(slot)},nil)
+  request:=yardBanterRequest(&domain.Yard{HumorMode:domain.HumorBold},banterSpeaker{Name:"Игорь лох",Trait:domain.TraitCunning,HumorMode:domain.HumorBold},banterSpeaker{Name:"Джулиан",Trait:domain.TraitCunning,HumorMode:domain.HumorBold},&ai.YardBanterContext{Trigger:"idle",Topic:topic,Scene:scene,Variation:uint64(slot)},nil)
   request.EventFacts=[]string{"conversation_topic="+topic};start:=time.Now();r,err:=voice.GenerateYardBanter(context.Background(),request)
   row:=map[string]any{"case":topic,"text":r.Text,"fallback":r.Fallback,"seconds":time.Since(start).Seconds()};if err!=nil{row["error"]=err.Error()};results=append(results,row);out,_:=json.Marshal(row);fmt.Println(string(out))
  }

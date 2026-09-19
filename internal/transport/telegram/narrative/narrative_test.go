@@ -13,7 +13,7 @@ func TestHuntStoryIsDeterministicAndTraitSpecific(t *testing.T) {
 	if lazy != HuntStory(domain.EncounterMicePack, "lazy", 123) {
 		t.Fatal("same hunt input produced different stories")
 	}
-	if philosopher := HuntStory(domain.EncounterMicePack, "philosopher", 123); lazy == philosopher {
+	if veteran := HuntStory(domain.EncounterMicePack, "veteran", 123); lazy == veteran {
 		t.Fatalf("trait did not affect story: %q", lazy)
 	}
 	if !strings.Contains(lazy, "отдых") && !strings.Contains(lazy, "полежал") {
@@ -23,7 +23,7 @@ func TestHuntStoryIsDeterministicAndTraitSpecific(t *testing.T) {
 
 func TestHuntStoryHasRareAbsurdVariant(t *testing.T) {
 	t.Parallel()
-	story := HuntStory(domain.EncounterPigeon, "sleepy", 0)
+	story := HuntStory(domain.EncounterPigeon, "angry", 0)
 	if !strings.Contains(story, "шаурм") && !strings.Contains(story, "психологически") && !strings.Contains(story, "сосиск") {
 		t.Fatalf("absurd suffix is missing: %q", story)
 	}
@@ -37,8 +37,8 @@ func TestExpeditionStoryRecognizesCloseVictoryAndLoot(t *testing.T) {
 		Turns: []domain.BattleTurn{{Actor: domain.BattleActorEnemy, Damage: 91, DefenderHPAfter: 9}},
 		Loot:  domain.LootRoll{Dropped: true, ItemID: "lynx_claw"},
 	}
-	story := ExpeditionStory(result, "neat")
-	if story != ExpeditionStory(result, "neat") {
+	story := ExpeditionStory(result, "cunning")
+	if story != ExpeditionStory(result, "cunning") {
 		t.Fatal("same expedition result produced different stories")
 	}
 	if !strings.Contains(story, "HP") && !strings.Contains(story, "лапах") && !strings.Contains(story, "один удар") {

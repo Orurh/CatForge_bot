@@ -80,7 +80,7 @@ func TestProfilesAndMemoryAreDataOutsideRules(t *testing.T) {
 	if strings.Contains(p.System, attack) || !strings.Contains(p.User, attack) {
 		t.Fatal("profile escaped data boundary")
 	}
-	if !strings.Contains(p.User, "speech_style=") || !strings.Contains(p.User, "RECENT_SPEECH") || !strings.Contains(p.User, "минимум энтузиазма") {
+	if !strings.Contains(p.User, "speech_style=") || !strings.Contains(p.User, "RECENT_SPEECH") || !strings.Contains(p.User, domain.DefaultSpeechStyle(domain.TraitLazy)) {
 		t.Fatal(p.User)
 	}
 	for _, want := range []string{"На злую фразу всегда допустим", "Даже на добрую фразу иногда", "ровно две", "а не к человеку"} {

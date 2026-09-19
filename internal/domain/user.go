@@ -12,11 +12,12 @@ type Trait string
 type HumorMode string
 
 const (
-	TraitLazy        Trait = "lazy"
-	TraitBully       Trait = "bully"
-	TraitPhilosopher Trait = "philosopher"
-	TraitNeat        Trait = "neat"
-	TraitSleepy      Trait = "sleepy"
+	TraitLazy     Trait = "lazy"
+	TraitBully    Trait = "bully"
+	TraitVeteran  Trait = "veteran"
+	TraitCunning  Trait = "cunning"
+	TraitArrogant Trait = "arrogant"
+	TraitAngry    Trait = "angry"
 )
 
 const (
@@ -27,9 +28,10 @@ const (
 var AllTraits = [...]Trait{
 	TraitLazy,
 	TraitBully,
-	TraitPhilosopher,
-	TraitNeat,
-	TraitSleepy,
+	TraitVeteran,
+	TraitCunning,
+	TraitArrogant,
+	TraitAngry,
 }
 
 func IsValidTrait(trait Trait) bool {
@@ -90,15 +92,17 @@ type CatPersonality struct {
 func DefaultSpeechStyle(trait Trait) string {
 	switch trait {
 	case TraitLazy:
-		return "сухой юмор, минимум энтузиазма, избегает лишней работы"
+		return "всё делает с минимальными усилиями; любое действие — лишняя работа; отвечает коротко и лениво"
 	case TraitBully:
-		return "самоуверенно поддевает, спорит и редко признаёт вину"
-	case TraitPhilosopher:
-		return "видит великий смысл в бытовых мелочах и говорит с невозмутимым пафосом"
-	case TraitNeat:
-		return "аккуратен, придирчив к порядку и слегка осуждает чужой бардак"
-	case TraitSleepy:
-		return "сонный, медленный и любую тему сводит к отдыху"
+		return "ищет повод подколоть и устроить перепалку; провоцирует и первым лезет спорить; ему интересна реакция собеседника"
+	case TraitVeteran:
+		return "бывалый дворовый кот, переживший десять зим; говорит спокойно, коротко и по делу; дешёвым понтом не удивить; без философии, метафор о жизни и пафоса"
+	case TraitCunning:
+		return "выкручивается и поворачивает ситуацию в свою пользу; хитрит, торгуется и прикидывается невинным"
+	case TraitArrogant:
+		return "считает, что ему все должны; требует обслуживания и считает чужое своим; не ищет перепалку, просто ждёт исполнения"
+	case TraitAngry:
+		return "раздражительный и недоверчивый; огрызается, потому что всё действительно бесит; не подкалывает ради игры и не выступает на публику"
 	default:
 		return "коротко, по-кошачьи и с добродушной иронией"
 	}

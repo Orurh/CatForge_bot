@@ -25,7 +25,7 @@ func TestBedtimeUsesPrimaryAndConversationMemory(t *testing.T) {
 }
 
 func TestBedtimeFallbackIsAboutSleepAndHonorsHumorMode(t *testing.T) {
-	for _, trait := range []domain.Trait{domain.TraitLazy, domain.TraitBully, domain.TraitNeat, domain.TraitPhilosopher, domain.TraitSleepy, ""} {
+	for _, trait := range []domain.Trait{domain.TraitLazy, domain.TraitBully, domain.TraitCunning, domain.TraitVeteran, domain.TraitAngry, domain.TraitArrogant, ""} {
 		for _, mode := range []HumorMode{HumorNormal, HumorBold} {
 			p := &stubProvider{name: "unavailable", err: context.DeadlineExceeded}
 			got, err := NewGateway(p, nil, nil, time.Second).Generate(context.Background(), GenerationRequest{
