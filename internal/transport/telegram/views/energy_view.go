@@ -47,14 +47,14 @@ func EnergyTrainingStatus(name string, energy int, updatedAt, now time.Time) str
 	}
 }
 
-func EnergyRecoveryText(name string, energy int, updatedAt, now time.Time) string {
+func EnergyRecoveryText(energy int, updatedAt, now time.Time) string {
 	current := domain.RegenEnergy(energy, updatedAt, now)
 	if current >= domain.EnergyMax {
 		return "Полный запас: дальше энергия не копится."
 	}
-	next := "Следующая тренировка уже доступна."
+	next := "Тренировка уже доступна"
 	if current < domain.TrainingMinEnergy {
-		next = "Следующая тренировка доступна примерно через " + energyDuration(domain.EnergyWait(energy, updatedAt, now, domain.TrainingMinEnergy)) + "."
+		next = "Тренировка через ~" + energyDuration(domain.EnergyWait(energy, updatedAt, now, domain.TrainingMinEnergy))
 	}
-	return next + "\nДо полного запаса у " + name + ": ~" + energyDuration(domain.EnergyWait(energy, updatedAt, now, domain.EnergyMax)) + ".\nПри 100/100 энергия больше не копится."
+	return next + " · полный запас через ~" + energyDuration(domain.EnergyWait(energy, updatedAt, now, domain.EnergyMax)) + ".\n"
 }

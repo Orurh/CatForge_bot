@@ -55,7 +55,7 @@ func TestEnergyUXStatesAndRecovery(t *testing.T) {
 			t.Fatal(text)
 		}
 	}
-	text := EnergyRecoveryText("Мур", 0, now, now)
+	text := EnergyRecoveryText(0, now, now)
 	for _, want := range []string{"6ч 40м", "13ч 20м", "энергия больше не копится"} {
 		if !strings.Contains(text, want) {
 			t.Fatal(text)
@@ -66,5 +66,22 @@ func TestEnergyUXStatesAndRecovery(t *testing.T) {
 	}
 	if text := EnergyProfileStatus(100, now, now); !strings.Contains(text, "полная, дальше не копится") {
 		t.Fatal(text)
+	}
+}
+
+func TestTrainingStoryNamesCatOnceWithoutDamagingOtherNames(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct{ name, story, want string }{
+		{"Джулиан", "Джулиан поймал мышь. Слишком пыльная.", "Джулиан поймал мышь. Слишком пыльная."},
+		{"Джулиан", "Джулиан: Джулиан поймал мышь.", "Джулиан поймал мышь."},
+		{"Джулиан", "джулиан поймал мышь.", "Джулиан поймал мышь."},
+		{"Джулиан", "поймал мышь.", "Джулиан поймал мышь."},
+		{"Джулиан", "Поймал мышь.", "Джулиан поймал мышь."},
+		{"Мур", "мурлыкал после тренировки.", "Мур мурлыкал после тренировки."},
+		{"Сэр Мур", "Сэр Мур поймал мышь. Батон одобряет.", "Сэр Мур поймал мышь. Батон одобряет."},
+	} {
+		if got := FormatTrainingStory(tt.name, tt.story); got != tt.want {
+			t.Errorf("FormatTrainingStory(%q, %q) = %q, want %q", tt.name, tt.story, got, tt.want)
+		}
 	}
 }

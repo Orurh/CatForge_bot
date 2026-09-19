@@ -12,7 +12,10 @@ import (
 
 const maxOutputRunes = 500
 
+const primaryAttempts = 2
+
 type Gateway struct {
+	memory   ConversationMemory
 	primary  Provider
 	fallback Provider
 	usage    UsageSink
@@ -76,6 +79,10 @@ func (g *Gateway) Generate(ctx context.Context, request GenerationRequest) (gene
 		observability.Duration.WithLabelValues("ai", "generate").Observe(time.Since(observedStart).Seconds())
 	}()
 	started := g.now()
+	scope := speechScope(request)
+	if history := g.recentSpeech(ctx, scope, request); len(history) > 0 {
+		request.RecentSpeech = history
+	}
 	prompt := BuildPrompt(request)
 	provider := g.primary
 	usingFallback := provider == nil
@@ -84,16 +91,46 @@ func (g *Gateway) Generate(ctx context.Context, request GenerationRequest) (gene
 		provider = g.fallback
 	}
 
-	result, err := g.call(ctx, provider, prompt)
-	primaryBlocked := result.Blocked
+	var result ProviderResult
+	var err error
+	primaryBlocked := false
+	if usingFallback {
+		result, err = g.callFallback(ctx, prompt)
+	} else {
+		attemptTimeout := g.timeout / primaryAttempts
+		if attemptTimeout <= 0 {
+			attemptTimeout = g.timeout
+		}
+		for attempt := 0; attempt < primaryAttempts; attempt++ {
+			result, err = g.callWithTimeout(ctx, provider, prompt, attemptTimeout)
+			primaryBlocked = primaryBlocked || result.Blocked
+			if err == nil && !result.Blocked && validOutputForRequest(request, result.Text) {
+				break
+			}
+			if attempt+1 < primaryAttempts {
+				g.record(ctx, request, provider, result, started, false, result.Blocked, generationError(err, result))
+			}
+			if result.Blocked || attempt+1 == primaryAttempts {
+				break
+			}
+			select {
+			case <-time.After(250 * time.Millisecond):
+			case <-ctx.Done():
+				err = ctx.Err()
+			}
+		}
+	}
 	if err != nil || result.Blocked || !validOutputForRequest(request, result.Text) {
 		if usingFallback {
 			g.record(ctx, request, provider, result, started, true, result.Blocked, err)
 			return Generation{}, fmt.Errorf("AI fallback generation failed: %w", generationError(err, result))
 		}
+		// Keep the failed primary attempt: a successful fallback must not erase
+		// provider outages from usage/diagnostics.
+		g.record(ctx, request, provider, result, started, false, result.Blocked, generationError(err, result))
 		provider = g.fallback
 		usedFallback = true
-		result, err = g.call(ctx, provider, prompt)
+		result, err = g.callFallback(ctx, prompt)
 	}
 
 	success := err == nil && !result.Blocked && validOutputForRequest(request, result.Text)
@@ -101,14 +138,29 @@ func (g *Gateway) Generate(ctx context.Context, request GenerationRequest) (gene
 	if !success {
 		return Generation{}, fmt.Errorf("AI generation failed: %w", generationError(err, result))
 	}
+	if !usedFallback || !isDirectReply(request.Type) {
+		g.rememberSpeech(ctx, scope, request, strings.TrimSpace(result.Text))
+	}
 	return Generation{
 		Text: strings.TrimSpace(result.Text), Emotion: strings.TrimSpace(result.Emotion),
 		Provider: provider.Name(), Model: result.Model, Fallback: usedFallback,
 	}, nil
 }
 
+func isDirectReply(kind GenerationType) bool {
+	return kind == GenerationCatReply || kind == GenerationHumanReplyToCat
+}
+
+func (g *Gateway) callFallback(ctx context.Context, prompt Prompt) (ProviderResult, error) {
+	return g.call(ctx, g.fallback, prompt)
+}
+
 func (g *Gateway) call(ctx context.Context, provider Provider, prompt Prompt) (ProviderResult, error) {
-	callCtx, cancel := context.WithTimeout(ctx, g.timeout)
+	return g.callWithTimeout(ctx, provider, prompt, g.timeout)
+}
+
+func (g *Gateway) callWithTimeout(ctx context.Context, provider Provider, prompt Prompt, timeout time.Duration) (ProviderResult, error) {
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	result, err := provider.Generate(callCtx, prompt)
 	result.Text = censorProfanity(result.Text)
@@ -153,6 +205,9 @@ func validOutputForRequest(request GenerationRequest, value string) bool {
 			return false
 		}
 		for index, cat := range []CatContext{request.Cat, request.OtherCat} {
+			if utf8.RuneCountInString(lines[index]) > 220 {
+				return false
+			}
 			line := strings.ToLower(strings.TrimSpace(lines[index]))
 			namePrefix := strings.ToLower(strings.TrimSpace(cat.Name)) + ":"
 			marker := "cat_a:"
@@ -165,8 +220,23 @@ func validOutputForRequest(request GenerationRequest, value string) bool {
 		}
 		return true
 	}
-	if request.Type == GenerationHumanReplyToCat && strings.ContainsAny(strings.TrimSpace(value), "\r\n") {
-		return false
+	switch request.Type {
+	case GenerationCatReply, GenerationHumanReplyToCat, GenerationFirstPersonalityLine, GenerationAutonomousCat, GenerationBedtimeFarewell:
+		if strings.ContainsAny(strings.TrimSpace(value), "\r\n") || utf8.RuneCountInString(strings.TrimSpace(value)) > 300 {
+			return false
+		}
+		if request.Type == GenerationBedtimeFarewell && request.Cat.Name != "" &&
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), strings.ToLower(strings.TrimSpace(request.Cat.Name))+":") {
+			return false
+		}
+	case GenerationTrainingNarrative:
+		if strings.ContainsAny(strings.TrimSpace(value), "\r\n") || utf8.RuneCountInString(strings.TrimSpace(value)) > 280 {
+			return false
+		}
+	case GenerationWeeklySummary, GenerationEventNarrative:
+		if utf8.RuneCountInString(strings.TrimSpace(value)) > 450 {
+			return false
+		}
 	}
 	return true
 }

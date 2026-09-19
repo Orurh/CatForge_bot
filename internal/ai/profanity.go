@@ -13,6 +13,10 @@ var profanityWord = regexp.MustCompile(`^(?:(?:на|по|за|ни|до|о|а|н
 func censorProfanity(text string) string {
 	return speechWord.ReplaceAllStringFunc(text, func(word string) string {
 		lower := strings.ToLower(word)
+		// These pronouns share a prefix with an inflected swear, but are ordinary words.
+		if lower == "себя" || lower == "себе" {
+			return word
+		}
 		if lower != "бля" && !profanityWord.MatchString(lower) {
 			return word
 		}

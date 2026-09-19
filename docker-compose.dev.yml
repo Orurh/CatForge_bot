@@ -51,6 +51,10 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_TIMEOUT: ${AI_TIMEOUT:-5s}
       CODEX_BRIDGE_SOCKET: /run/codex-bridge/bridge.sock
+      CAT_BANTER_INTERVAL: ${CAT_BANTER_INTERVAL:-2h}
+      CAT_BANTER_TIMEZONE: ${CAT_BANTER_TIMEZONE:-Europe/Moscow}
+      CAT_BANTER_QUIET_START: ${CAT_BANTER_QUIET_START:-0}
+      CAT_BANTER_QUIET_END: ${CAT_BANTER_QUIET_END:-10}
       MIGRATIONS_DIR: /app/migrations
     group_add:
       - "${CODEX_BRIDGE_GID:-1000}"

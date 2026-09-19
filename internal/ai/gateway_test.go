@@ -71,7 +71,9 @@ func TestGatewayFallsBackOnProviderFailure(t *testing.T) {
 	if generation.Text == "" || !generation.Fallback || generation.Provider != "procedural" {
 		t.Fatalf("unexpected fallback: %+v", generation)
 	}
-	if len(usage.records) != 1 || !usage.records[0].Success || !usage.records[0].Fallback {
+	if len(usage.records) != 3 || usage.records[0].Success || usage.records[0].Provider != "broken" ||
+		usage.records[0].ErrorCode != "provider_error" || usage.records[1].Success || usage.records[1].Provider != "broken" ||
+		usage.records[1].ErrorCode != "provider_error" || !usage.records[2].Success || !usage.records[2].Fallback {
 		t.Fatalf("unexpected usage: %+v", usage.records)
 	}
 }

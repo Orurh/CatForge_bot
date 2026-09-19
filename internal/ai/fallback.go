@@ -33,22 +33,32 @@ func (FallbackProvider) Generate(_ context.Context, prompt Prompt) (ProviderResu
 		return ProviderResult{Text: fallbackArenaBanter(request.ArenaBanter), Emotion: "smug", Model: "procedural-v1"}, nil
 	}
 	if request.Type == GenerationYardBanter {
-		return ProviderResult{Text: fallbackYardBanter(request.YardBanter), Emotion: "smug", Model: "procedural-v1"}, nil
+		return ProviderResult{Text: fallbackYardBanter(request), Emotion: "smug", Model: "procedural-v1"}, nil
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(request.Cat.Name))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(request.UserMessage))
 	key, data := fallbackReply(request)
-	line := gamecontent.Render(key, uint64(h.Sum32()), data)
+	if request.Type == GenerationBedtimeFarewell {
+		key = "fallback.bedtime.normal"
+		if request.HumorMode == HumorBold {
+			key = "fallback.bedtime.bold"
+		}
+		if gamecontent.Has(key + "." + string(request.Cat.Trait)) {
+			key += "." + string(request.Cat.Trait)
+		}
+	}
+	line := renderFreshSpeech(key, uint64(h.Sum32()), data, request.RecentSpeech)
 	return ProviderResult{Text: line, Emotion: fallbackEmotion(request.Cat.Trait), Model: "procedural-v1"}, nil
 }
 
-func fallbackYardBanter(banter *YardBanterContext) string {
+func fallbackYardBanter(request GenerationRequest) string {
+	banter := request.YardBanter
 	key := "fallback.yard_banter.idle.default"
 	selector := uint64(0)
 	if banter != nil {
-		selector = uint64(banter.Friendship + banter.Rivalry + banter.Respect + banter.CatAContribution + banter.CatBContribution)
+		selector = banter.Variation + uint64(banter.Friendship+banter.Rivalry+banter.Respect+banter.CatAContribution+banter.CatBContribution)
 		tone := "default"
 		switch {
 		case banter.Rivalry >= 3 && banter.Rivalry >= banter.Friendship+2 && banter.Rivalry >= banter.Respect:
@@ -69,9 +79,12 @@ func fallbackYardBanter(banter *YardBanterContext) string {
 			}
 		} else {
 			key = "fallback.yard_banter.idle." + tone
+			if request.HumorMode == HumorBold {
+				key = "fallback.yard_banter.idle.bold." + tone
+			}
 		}
 	}
-	return gamecontent.Render(key, selector, banter)
+	return renderFreshSpeech(key, selector, banter, request.RecentSpeech)
 }
 
 func fallbackArenaBanter(banter *ArenaBanterContext) string {
@@ -318,4 +331,23 @@ func fallbackEmotion(trait domain.Trait) string {
 	default:
 		return "neutral"
 	}
+}
+
+// Prefer a different procedural line when the primary provider is unavailable.
+func renderFreshSpeech(key string, selector uint64, data any, history []SpeechMemory) string {
+	first := gamecontent.Render(key, selector, data)
+	for attempt := 0; attempt <= len(history); attempt++ {
+		text := gamecontent.Render(key, selector+uint64(attempt), data)
+		repeated := false
+		for _, old := range history {
+			if strings.TrimSpace(old.Text) == strings.TrimSpace(text) {
+				repeated = true
+				break
+			}
+		}
+		if !repeated {
+			return text
+		}
+	}
+	return first
 }

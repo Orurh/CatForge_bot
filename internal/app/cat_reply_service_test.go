@@ -58,7 +58,7 @@ func TestCatReplyServiceGeneratesTypedEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reply() error = %v", err)
 	}
-	if gotCat != cat || !strings.Contains(generation.Text, "Мурзик") || !generation.Fallback {
+	if gotCat != cat || !strings.Contains(generation.Text, "ИИ недоступен") || !generation.Fallback {
 		t.Fatalf("unexpected reply: cat=%+v generation=%+v", gotCat, generation)
 	}
 	if len(events.events) != 1 || events.events[0].Kind != GameEventCatReplyGenerated || events.events[0].DedupeKey != "request:1" || events.events[0].YardID != 9 {

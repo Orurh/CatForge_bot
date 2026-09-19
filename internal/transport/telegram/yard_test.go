@@ -39,3 +39,14 @@ func TestFormatYardSnapshotHandlesNilYard(t *testing.T) {
 		t.Fatalf("formatYardSnapshot() = %q, want empty", got)
 	}
 }
+
+func TestLargeYardSnapshotStaysCompact(t *testing.T) {
+	snapshot := app.YardSnapshot{Yard: &domain.Yard{Name: "Большой двор"}}
+	for i := 0; i < 1000; i++ {
+		snapshot.Members = append(snapshot.Members, domain.YardMember{CatName: "Кот", Trait: domain.TraitLazy, Level: 1})
+	}
+	text := formatYardSnapshot(snapshot)
+	if !strings.Contains(text, "🐈 КОТЫ · 1000") || !strings.Contains(text, "…и ещё: 995") || strings.Count(text, "└ Характер:") != 5 {
+		t.Fatal(text)
+	}
+}

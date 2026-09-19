@@ -11,9 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type YardRepo struct{ pool *pgxpool.Pool }
+type YardRepo struct {
+	pool           *pgxpool.Pool
+	banterStarted  time.Time
+	banterInterval time.Duration
+}
 
-func NewYardRepo(pool *pgxpool.Pool) *YardRepo { return &YardRepo{pool: pool} }
+func NewYardRepo(pool *pgxpool.Pool) *YardRepo {
+	return &YardRepo{pool: pool, banterStarted: time.Now(), banterInterval: 2 * time.Hour}
+}
+
+func (r *YardRepo) SetBanterInterval(interval time.Duration) { r.banterInterval = interval }
 
 func (r *YardRepo) EnsureAndJoin(ctx context.Context, telegramChatID int64, name string, userID, catID int64, now time.Time) (*domain.Yard, bool, bool, error) {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -145,8 +153,6 @@ func (r *YardRepo) ClaimAutoMessageSlot(ctx context.Context, yardID int64, now t
 		    banter_used = yard_auto_message_usage.banter_used + $6,
 		    updated_at = EXCLUDED.updated_at
 		WHERE yard_auto_message_usage.used < $4
-		  AND yard_auto_message_usage.single_used + $5 <= 1
-		  AND yard_auto_message_usage.banter_used + $6 <= 1
 		RETURNING used
 	`, yardID, now.UTC().Format("2006-01-02"), now, limit, singleDelta, banterDelta).Scan(&used)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -159,43 +165,32 @@ func (r *YardRepo) ListIdleBanterCandidates(ctx context.Context, now, activeSinc
 	if limit <= 0 {
 		limit = 20
 	}
+	// Claim only a current conversation; never enumerate missed time slots.
+	if now.Before(r.banterStarted.Add(r.banterInterval)) {
+		return nil, nil
+	}
 	rows, err := r.pool.Query(ctx, `
+		WITH eligible AS (
+		 SELECT y.id FROM yards y
+		 LEFT JOIN yard_banter_schedule s ON s.yard_id = y.id
+		 WHERE y.auto_messages_enabled AND y.max_auto_messages_day > 0
+		 AND (y.quiet_until IS NULL OR y.quiet_until <= $1)
+		 AND (s.last_attempt IS NULL OR s.last_attempt <= $2)
+		 AND (SELECT count(*) FROM yard_members m JOIN cat_personality p ON p.cat_id=m.cat_id
+		     WHERE m.yard_id=y.id AND p.auto_speak_enabled) >= 1
+		 ORDER BY s.last_attempt NULLS FIRST, y.id LIMIT $3
+		), claimed AS (
+		 INSERT INTO yard_banter_schedule (yard_id, last_attempt)
+		 SELECT id, $1 FROM eligible
+		 ON CONFLICT (yard_id) DO UPDATE SET last_attempt=EXCLUDED.last_attempt
+		 WHERE yard_banter_schedule.last_attempt <= $2
+		 RETURNING yard_id
+		)
 		SELECT y.id, y.telegram_chat_id, y.name, y.humor_mode, y.auto_messages_enabled,
 		       y.max_auto_messages_day, y.cat_to_cat_banter, y.fights_enabled,
 		       y.quiet_until, y.created_at, y.updated_at
-		FROM yards y
-		LEFT JOIN LATERAL (
-			SELECT ge.id, ge.occurred_at
-			FROM game_events ge
-			WHERE ge.yard_id = y.id
-			  AND (
-				ge.event_type = 'cat_banter'
-				OR (ge.event_type = 'fight_finished' AND ge.properties->'banter' IS NOT NULL AND ge.properties->'banter' <> 'null'::jsonb)
-			  )
-			ORDER BY ge.occurred_at DESC, ge.id DESC
-			LIMIT 1
-		) previous ON true
-		WHERE y.auto_messages_enabled
-		  AND y.cat_to_cat_banter
-		  AND y.max_auto_messages_day > 0
-		  AND (y.quiet_until IS NULL OR y.quiet_until <= $1)
-		  AND (
-			SELECT count(*)
-			FROM yard_members member
-			JOIN cat_personality personality ON personality.cat_id = member.cat_id
-			WHERE member.yard_id = y.id
-			  AND member.last_active_at >= $2
-			  AND personality.auto_speak_enabled
-		  ) >= 2
-		  AND COALESCE(previous.occurred_at, y.created_at) +
-			make_interval(mins => (1440 + mod(abs(COALESCE(previous.id, y.id * 1103515245 + 12345)), 1441))::int) <= $1
-		  AND NOT EXISTS (
-			SELECT 1 FROM yard_auto_message_usage usage
-			WHERE usage.yard_id = y.id AND usage.usage_day = $3::date AND usage.banter_used >= 1
-		  )
-		ORDER BY COALESCE(previous.occurred_at, y.created_at), y.id
-		LIMIT $4
-	`, now, activeSince, now.UTC().Format("2006-01-02"), limit)
+		FROM yards y JOIN claimed c ON c.yard_id=y.id
+	`, now, now.Add(-r.banterInterval), limit)
 	if err != nil {
 		return nil, err
 	}

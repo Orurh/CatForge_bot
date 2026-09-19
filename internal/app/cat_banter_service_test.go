@@ -33,7 +33,7 @@ func (s banterPersonalities) SetAutoSpeak(context.Context, int64, bool) error { 
 
 func TestCatBanterSchedulerPublishesEligiblePair(t *testing.T) {
 	t.Parallel()
-	now := time.Unix(10_000, 0)
+	now := time.Date(2026, 9, 11, 10, 0, 0, 0, time.UTC)
 	claimed := []domain.AutoMessageKind{}
 	yard := domain.Yard{
 		ID: 9, TelegramChatID: -100, Name: "Друзья", HumorMode: domain.HumorBold,
@@ -75,7 +75,7 @@ func TestCatBanterSchedulerPublishesEligiblePair(t *testing.T) {
 
 func TestCatBanterPublishesNotableYardEventConversation(t *testing.T) {
 	t.Parallel()
-	now := time.Unix(20_000, 0)
+	now := time.Date(2026, 9, 11, 10, 0, 0, 0, time.UTC)
 	claimed := []domain.AutoMessageKind{}
 	yard := &domain.Yard{
 		ID: 9, TelegramChatID: -100, HumorMode: domain.HumorNormal,
@@ -112,7 +112,7 @@ func TestCatBanterPublishesNotableYardEventConversation(t *testing.T) {
 	}
 }
 
-func TestCatBanterNeedsTwoOptedInCats(t *testing.T) {
+func TestCatBanterAllowsOneOptedInCatToReact(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(30_000, 0)
 	yard := domain.Yard{ID: 9, AutoMessagesEnabled: true, MaxAutoMessagesDay: 2, CatToCatBanter: true}
@@ -127,7 +127,29 @@ func TestCatBanterNeedsTwoOptedInCats(t *testing.T) {
 	service := NewCatBanterService(yards, idleBanterYards{candidates: []domain.Yard{yard}}, personalities, ai.NewGateway(nil, ai.NewFallbackProvider(), nil, time.Second), fakeClock{t: now}, events)
 
 	count, err := service.RunDue(context.Background(), 20)
-	if err != nil || count != 0 || len(events.events) != 0 {
+	if err != nil || count != 1 || len(events.events) != 1 || events.events[0].Kind != GameEventAutonomousCatMessage {
 		t.Fatalf("RunDue() = %d, %v; events=%+v", count, err, events.events)
+	}
+}
+
+func TestBanterQuietHours(t *testing.T) {
+	s := NewCatBanterService(nil, nil, nil, nil, nil, nil)
+	for _, tc := range []struct {
+		hour  int
+		night bool
+	}{{0, true}, {9, true}, {10, false}, {22, false}, {23, false}} {
+		now := time.Date(2026, 9, 11, tc.hour, 0, 0, 0, s.location)
+		if got := s.isNight(now); got != tc.night {
+			t.Errorf("hour %d: night=%v", tc.hour, got)
+		}
+	}
+}
+
+func TestNightDoesNotQueryOrPublish(t *testing.T) {
+	now := time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)
+	events := &fakeEvents{}
+	s := NewCatBanterService(stubYards{}, idleBanterYards{err: context.DeadlineExceeded}, banterPersonalities{}, ai.NewGateway(nil, ai.NewFallbackProvider(), nil, time.Second), fakeClock{t: now}, events)
+	if n, err := s.RunDue(context.Background(), 20); n != 0 || err != nil {
+		t.Fatalf("night: %d %v", n, err)
 	}
 }

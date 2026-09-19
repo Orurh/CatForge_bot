@@ -4,14 +4,23 @@ This local beta mode uses the host owner's ChatGPT/Codex subscription, not API
 credits. It shares subscription limits with development work. Model:
 `gpt-5.6-luna`, reasoning effort `none`. Even a short request currently uses
 roughly 6,000 input tokens in Codex scaffolding. The API provider's 180-token
-limit does not bound Codex generation; the bridge asks for 300 characters,
+limit does not bound Codex generation; the bridge follows per-generation length limits (at most 500 characters),
 validates output, kills requests after 25 seconds and allows 100 attempts per
 UTC day. Failed attempts count too. The quota survives service restarts.
 
 `scripts/codex_bridge.py` runs under the owner's user systemd service
 `catforge-codex-bridge.service`. Codex must already be logged in via ChatGPT.
-The service uses the installed CLI path; update the unit if the extension path
-changes. It uses an empty temporary working directory, ignores user config,
+The service prefers the configured CLI path. If VS Code removes that extension
+version, the bridge resolves the newest executable in sibling OpenAI extension
+directories on each request. Missing binaries and generation failure categories
+are logged without prompt, response, or credential contents.
+
+The bridge uses a dedicated `catforge` provider configured for the existing
+ChatGPT endpoint with `requires_openai_auth=true` and `supports_websockets=false`.
+This avoids slow WebSocket reconnections on this host while retaining host-side
+Codex authentication. A transient JSON `error` event does not discard a later
+successful `turn.completed`; failed or incomplete turns still use the fallback.
+See the [official provider configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference). It uses an empty temporary working directory, ignores user config,
 disables shell/apps/plugins/hooks/browser/computer/image tools and does not
 pass bot secrets to Codex. No prompt or reply bodies are logged by the bridge.
 The CLI still owns its normal account state and credential refresh.
@@ -26,6 +35,22 @@ The dev Compose file now mounts the bridge socket directly and `.env` selects
 `AI_PROVIDER=codex`, `AI_MODEL=gpt-5.6-luna`, `AI_TIMEOUT=30s`. The Codex overlay
 is optional; ordinary dev + monitoring updates retain the provider. The host
 bridge group must match `MONITORING_BACKUP_GID` when monitoring is used.
+
+The base `docker-compose.yml` also mounts the socket and adds the bridge group.
+Having only `AI_PROVIDER=codex` in the environment is insufficient: a container
+without this mount silently falls back even while the host bridge is healthy.
+The bot remains nonroot; do not make the socket world-writable.
+
+After recreating the bot, run a manual end-to-end probe inside that container:
+
+```bash
+docker compose exec bot /app/bot aicheck
+```
+
+Use the same Compose files/project as the running stack. This consumes one
+provider request, prints the model and reply, and fails if fallback was used.
+It does not send anything to Telegram or modify game data. Ordinary readiness
+checks do not call AI and do not consume its quota.
 
 Run/update the existing beta stack:
 

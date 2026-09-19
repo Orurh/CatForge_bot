@@ -213,9 +213,18 @@ func (r *Router) onMessage(ctx context.Context, m *Message) {
 		r.log.Warn("message ctx build failed", logx.Any("err", err))
 		return
 	}
-
 	cmd, args := parseCommandForBot(m.Text, r.botUsername)
 	if cmd == "" {
+		if tgc.chatType == "group" || tgc.chatType == "supergroup" {
+			author := strings.TrimSpace(m.From.FirstName)
+			if author == "" {
+				author = strings.TrimSpace(m.From.Username)
+			}
+			if author == "" {
+				author = "участник"
+			}
+			r.app.RememberChatMessage(ctx, tgc.chatID, author, m.Text)
+		}
 		if r.tryConsumeSupportAmount(ctx, tgc, m) {
 			return
 		}

@@ -252,6 +252,8 @@ type Chat struct {
 }
 
 type User struct {
-	ID    int64 `json:"id"`
-	IsBot bool  `json:"is_bot,omitempty"`
+	ID        int64  `json:"id"`
+	IsBot     bool   `json:"is_bot,omitempty"`
+	FirstName string `json:"first_name,omitempty"`
+	Username  string `json:"username,omitempty"`
 }

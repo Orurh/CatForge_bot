@@ -131,3 +131,42 @@ func TestTrainingGroupExplainsBothEnergyDeadlines(t *testing.T) {
 		}
 	}
 }
+
+func TestTrainingMessageDoesNotRepeatNameOrEscapePlainText(t *testing.T) {
+	t.Parallel()
+	var sent struct {
+		Text      string `json:"text"`
+		ParseMode string `json:"parse_mode"`
+	}
+	sender := NewSender("test-token", logx.Nop())
+	sender.http = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if err := json.NewDecoder(req.Body).Decode(&sent); err != nil {
+			t.Fatal(err)
+		}
+		return jsonResponse(`{"ok":true,"result":{"message_id":1}}`), nil
+	})}
+	now := time.Unix(10000, 0)
+	err := NewTelegramGameEventSink(sender, nil, logx.Nop()).Publish(context.Background(), app.GameEvent{
+		Kind: app.GameEventCatTrained, OccurredAt: now,
+		Payload: app.CatTrainedPayload{
+			TargetChatID: -1, CatName: "Джулиан", Breed: domain.BreedMaineCoon, Level: 3,
+			EnergyUpdatedAt: now.Add(-7 * time.Minute),
+			Narrative:       "Джулиан загнал мышь под диван. Теперь это её проблема.",
+			Result:          domain.TrainResult{Outcome: domain.TrainingOK, EnergyCost: 78, XPGain: 119, LeveledUp: 1},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(sent.Text, "Джулиан") != 1 || strings.Contains(sent.Text, "Джулиан:") {
+		t.Fatalf("duplicated name or speech prefix: %q", sent.Text)
+	}
+	for _, want := range []string{"Джулиан загнал мышь", "−78 энергии", "+119 XP → уровень 3", "6ч 33м", "13ч 13м"} {
+		if !strings.Contains(sent.Text, want) {
+			t.Fatalf("missing %q: %s", want, sent.Text)
+		}
+	}
+	if sent.ParseMode != "" || strings.Contains(sent.Text, `\`) {
+		t.Fatalf("unexpected Markdown escaping: %+v", sent)
+	}
+}

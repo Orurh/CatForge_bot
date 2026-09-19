@@ -138,7 +138,7 @@ func (s *TrainingService) generateNarrative(ctx context.Context, userID, sourceC
 		}
 	}
 	personality := &domain.CatPersonality{
-		CatID: cat.ID, Trait: cat.Trait, SpeechStyle: domain.DefaultSpeechStyle(cat.Trait), HumorMode: domain.HumorNormal,
+		CatID: cat.ID, Trait: cat.Trait, SpeechStyle: domain.DefaultSpeechStyle(cat.Trait), HumorMode: domain.HumorBold,
 	}
 	if s.personalities != nil {
 		if stored, err := s.personalities.GetByCatID(ctx, cat.ID); err == nil && stored != nil {

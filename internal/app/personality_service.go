@@ -42,7 +42,7 @@ func (s *PersonalityService) FirstLine(ctx context.Context, cat *domain.Cat) (ai
 			ID: cat.ID, Name: cat.Name, Breed: cat.Breed, Trait: personality.Trait,
 			SpeechStyle: personality.SpeechStyle,
 		},
-		HumorMode: ai.HumorNormal,
+		HumorMode: personality.HumorMode,
 	})
 	if err != nil {
 		return ai.Generation{}, err

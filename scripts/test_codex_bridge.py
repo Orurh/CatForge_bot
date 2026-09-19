@@ -11,6 +11,23 @@ spec.loader.exec_module(bridge)
 
 
 class BridgeTests(unittest.TestCase):
+    def test_resolves_updated_extension_after_old_binary_removed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'extensions'
+            old = root / 'openai.chatgpt-26.5903.1-linux-x64/bin/linux-x86_64/codex'
+            new = root / 'openai.chatgpt-26.5903.10-linux-x64/bin/linux-x86_64/codex'
+            older = root / 'openai.chatgpt-26.5903.9-linux-x64/bin/linux-x86_64/codex'
+            for path in [new, older]:
+                path.parent.mkdir(parents=True)
+                path.write_text('#!/bin/sh\n')
+                path.chmod(0o700)
+            self.assertEqual(bridge.resolve_binary(str(old)), str(new))
+            self.assertEqual(bridge.resolve_binary(str(older)), str(older))
+
+    def test_missing_explicit_binary_does_not_search_unrelated_paths(self):
+        with self.assertRaisesRegex(RuntimeError, 'codex_binary_missing'):
+            bridge.resolve_binary('/missing/custom/codex')
+
     def test_quota_persists_across_connections(self):
         with tempfile.TemporaryDirectory() as temp:
             db = Path(temp) / 'quota.sqlite'
@@ -28,6 +45,25 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(result['usage']['input_tokens'], 123)
         self.assertEqual(result['output'][0]['content'][0]['text'], 'Мяу')
         self.assertNotIn('AI_API_KEY', popen.call_args.kwargs['env'])
+
+    @patch.object(bridge.subprocess, 'Popen')
+    def test_reconnection_notice_does_not_discard_success(self, popen):
+        proc = popen.return_value
+        proc.returncode = 0
+        proc.communicate.return_value = ('{"type":"error","message":"Reconnecting..."}\n'
+                                         '{"type":"item.completed","item":{"type":"agent_message","text":"Мяу"}}\n'
+                                         '{"type":"turn.completed","usage":{}}', None)
+        result = bridge.generate('/codex', '/empty', {'instructions': 'cat', 'input': 'hello'})
+        self.assertEqual(result['output'][0]['content'][0]['text'], 'Мяу')
+
+    @patch.object(bridge.subprocess, 'Popen')
+    def test_failed_turn_never_returns_partial_text(self, popen):
+        proc = popen.return_value
+        proc.returncode = 0
+        proc.communicate.return_value = ('{"type":"item.completed","item":{"type":"agent_message","text":"Мяу"}}\n'
+                                         '{"type":"turn.failed"}', None)
+        with self.assertRaisesRegex(RuntimeError, 'codex_failed'):
+            bridge.generate('/codex', '/empty', {'instructions': 'cat', 'input': 'hello'})
 
     @patch.object(bridge.os, 'killpg')
     @patch.object(bridge.subprocess, 'Popen')

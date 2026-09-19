@@ -3,29 +3,34 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 )
 
 type Config struct {
-	Env                   string
-	TelegramMode          string
-	HTTPAddr              string
-	PublicBaseURL         string
-	TelegramToken         string
-	WebhookSecret         string
-	WebhookPath           string
-	PaymentSupportContact string
-	BotUsername           string
-	DatabaseURL           string
-	MigrationsDir         string
-	GameEngineAddr        string
-	AIProvider            string
-	AIAPIKey              string
-	AIBaseURL             string
-	AIModel               string
-	AITimeout             time.Duration
-	CodexBridgeSocket     string
+	BanterInterval                   time.Duration
+	BanterTimezone                   *time.Location
+	BanterQuietStart, BanterQuietEnd int
+	Env                              string
+	TelegramMode                     string
+	HTTPAddr                         string
+	PublicBaseURL                    string
+	TelegramToken                    string
+	WebhookSecret                    string
+	WebhookPath                      string
+	PaymentSupportContact            string
+	BotUsername                      string
+	DatabaseURL                      string
+	MigrationsDir                    string
+	GameEngineAddr                   string
+	AIProvider                       string
+	AIAPIKey                         string
+	AIBaseURL                        string
+	AIModel                          string
+	AITimeout                        time.Duration
+	CodexBridgeSocket                string
 }
 
 func Load() (Config, error) {
@@ -48,9 +53,26 @@ func Load() (Config, error) {
 		AIModel:               strings.TrimSpace(getenv("AI_MODEL", "")),
 		CodexBridgeSocket:     strings.TrimSpace(getenv("CODEX_BRIDGE_SOCKET", "/run/codex-bridge/bridge.sock")),
 	}
+	var err error
+	c.BanterInterval, err = time.ParseDuration(getenv("CAT_BANTER_INTERVAL", "2h"))
+	if err != nil || c.BanterInterval < time.Minute {
+		return Config{}, fmt.Errorf("CAT_BANTER_INTERVAL must be at least 1m")
+	}
+	c.BanterTimezone, err = time.LoadLocation(getenv("CAT_BANTER_TIMEZONE", "Europe/Moscow"))
+	if err != nil {
+		return Config{}, fmt.Errorf("CAT_BANTER_TIMEZONE: %w", err)
+	}
+	c.BanterQuietStart, err = strconv.Atoi(getenv("CAT_BANTER_QUIET_START", "0"))
+	if err != nil || c.BanterQuietStart < 0 || c.BanterQuietStart > 23 {
+		return Config{}, fmt.Errorf("CAT_BANTER_QUIET_START must be 0..23")
+	}
+	c.BanterQuietEnd, err = strconv.Atoi(getenv("CAT_BANTER_QUIET_END", "10"))
+	if err != nil || c.BanterQuietEnd < 0 || c.BanterQuietEnd > 23 {
+		return Config{}, fmt.Errorf("CAT_BANTER_QUIET_END must be 0..23")
+	}
 	aiTimeout, err := time.ParseDuration(strings.TrimSpace(getenv("AI_TIMEOUT", "5s")))
-	if err != nil || aiTimeout <= 0 || aiTimeout > 30*time.Second {
-		return Config{}, fmt.Errorf("AI_TIMEOUT must be a duration between 1ns and 30s")
+	if err != nil || aiTimeout <= 0 || aiTimeout > 90*time.Second {
+		return Config{}, fmt.Errorf("AI_TIMEOUT must be a duration between 1ns and 90s")
 	}
 	c.AITimeout = aiTimeout
 	if c.TelegramMode != "webhook" && c.TelegramMode != "polling" {
@@ -79,19 +101,22 @@ func Load() (Config, error) {
 	if c.GameEngineAddr == "" {
 		return Config{}, fmt.Errorf("GAME_ENGINE_ADDR is required; the C++ engine is the only game engine")
 	}
-	if c.AIProvider != "procedural" && c.AIProvider != "openai" && c.AIProvider != "codex" {
-		return Config{}, fmt.Errorf("AI_PROVIDER must be procedural, openai or codex")
+	if c.AIProvider != "procedural" && c.AIProvider != "openai" && c.AIProvider != "codex" && c.AIProvider != "deepseek" {
+		return Config{}, fmt.Errorf("AI_PROVIDER must be procedural, openai, codex or deepseek")
 	}
 	if c.AIProvider == "codex" && c.AIModel == "" {
 		return Config{}, fmt.Errorf("AI_MODEL is required when AI_PROVIDER=codex")
 	}
-	if c.AIProvider == "openai" {
+	if c.AIProvider == "openai" || c.AIProvider == "deepseek" {
 		if c.AIAPIKey == "" {
-			return Config{}, fmt.Errorf("AI_API_KEY is required when AI_PROVIDER=openai")
+			return Config{}, fmt.Errorf("AI_API_KEY is required when AI_PROVIDER=%s", c.AIProvider)
 		}
 		if c.AIModel == "" {
-			return Config{}, fmt.Errorf("AI_MODEL is required when AI_PROVIDER=openai")
+			return Config{}, fmt.Errorf("AI_MODEL is required when AI_PROVIDER=%s", c.AIProvider)
 		}
+	}
+	if c.AIProvider == "deepseek" && strings.TrimSpace(os.Getenv("AI_BASE_URL")) == "" {
+		return Config{}, fmt.Errorf("AI_BASE_URL is required when AI_PROVIDER=deepseek")
 	}
 	if !strings.HasPrefix(c.WebhookPath, "/") {
 		return Config{}, fmt.Errorf("WEBHOOK_PATH must start with '/'")

@@ -215,7 +215,6 @@ func (l *TelegramGameEventSink) training(ctx context.Context, e app.CatTrainedPa
 	if name == "" {
 		name = "Кот"
 	}
-	prefix := badge + " " + name + ": "
 	var line string
 	switch e.Result.Outcome {
 	case domain.TrainingNotEnoughEnergy:
@@ -225,7 +224,7 @@ func (l *TelegramGameEventSink) training(ctx context.Context, e app.CatTrainedPa
 		if story == "" {
 			story = narrative.HuntStory(e.Result.Encounter, e.Trait, e.Result.Flavor)
 		}
-		line = prefix + story + "\n⚡ −" + itoa(e.Result.EnergyCost) + " энергии" +
+		line = badge + " " + views.FormatTrainingStory(name, story) + "\n⚡ −" + itoa(e.Result.EnergyCost) + " энергии" +
 			" · осталось " + itoa(e.Energy) + "/100\n⭐ +" + itoa64(e.Result.XPGain) + " XP"
 
 		if e.Result.Crit {
@@ -238,7 +237,7 @@ func (l *TelegramGameEventSink) training(ctx context.Context, e app.CatTrainedPa
 
 	line += views.FormatProgressionFacts(e.ProgressionFacts, e.LootItemID)
 	if e.Result.Outcome == domain.TrainingOK {
-		line += "\n\n" + views.EnergyRecoveryText(name, e.Energy, e.EnergyUpdatedAt, now)
+		line += "\n\n" + views.EnergyRecoveryText(e.Energy, e.EnergyUpdatedAt, now)
 	}
 	if err := l.s.Text(ctx, e.TargetChatID, line); err != nil {
 		l.log.Error("eventlog send failed", logx.Any("err", err))

@@ -13,6 +13,16 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
 
+func TestOpenAIProviderDefaultClientUsesContextDeadline(t *testing.T) {
+	provider, err := NewOpenAIProvider("secret", "https://example.test/v1", "test-model", nil)
+	if err != nil {
+		t.Fatalf("NewOpenAIProvider() error = %v", err)
+	}
+	if provider.client.Timeout != 0 {
+		t.Fatalf("default client timeout = %s, want context-controlled timeout", provider.client.Timeout)
+	}
+}
+
 func TestOpenAIProviderUsesResponsesAPIWithoutStorage(t *testing.T) {
 	t.Parallel()
 	var requestBody map[string]any

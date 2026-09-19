@@ -22,6 +22,10 @@ backups/
 # Local Codex bridge
 .codex-bridge/
 
+# Host deployment settings/history and Python bytecode
+.deploy/
+__pycache__/
+
 # Local certificates
 deploy/certs/
 

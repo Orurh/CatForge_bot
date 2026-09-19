@@ -62,6 +62,7 @@ func (s *CatReplyService) Reply(ctx context.Context, userID, chatID int64, reque
 		progressionFacts, _ = history.RecentProgressionFacts(ctx, cat.ID)
 	}
 	generation, err := s.voice.GenerateCatReply(ctx, ai.GenerationRequest{
+		ChatID: chatID,
 		Cat: ai.CatContext{
 			ID: cat.ID, Name: cat.Name, Breed: cat.Breed, Trait: personality.Trait,
 			SpeechStyle: personality.SpeechStyle,

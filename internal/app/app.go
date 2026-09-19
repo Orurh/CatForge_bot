@@ -9,12 +9,13 @@ import (
 )
 
 type App struct {
-	Payments *PaymentService
-	Users    UserRepository
-	Clock    Clock
-	RNG      RNG
-	Events   GameEventSink
-	Updates  UpdateRepository
+	Payments    *PaymentService
+	Users       UserRepository
+	Clock       Clock
+	RNG         RNG
+	Events      GameEventSink
+	Updates     UpdateRepository
+	ChatContext ChatContextRepository
 
 	Starter       *StarterService
 	Profile       *ProfileService
@@ -30,6 +31,13 @@ type App struct {
 	CatBanter     *CatBanterService
 	YardEvent     *YardEventService
 	WeeklySummary *WeeklySummaryService
+}
+
+func (a *App) RememberChatMessage(ctx context.Context, chatID int64, author, text string) {
+	if a == nil || a.ChatContext == nil || a.Clock == nil {
+		return
+	}
+	_ = a.ChatContext.Remember(ctx, chatID, author, text, a.Clock.Now())
 }
 
 func New(users UserRepository, cats CatRepository, personalities PersonalityRepository, quota AIQuotaRepository, refs CatMessageReferenceRepository, yards YardRepository, yardEvents YardEventRepository, fights FightRepository, items ItemRepository, updates UpdateRepository, engine gameengine.Engine, voice ai.Generator, clock Clock, rng RNG, events GameEventSink) *App {

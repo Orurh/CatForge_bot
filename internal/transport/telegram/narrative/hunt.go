@@ -8,16 +8,15 @@ import (
 // HuntStory composes a deterministic story from editable content, the action
 // flavor and the cat trait.
 func HuntStory(enc domain.Encounter, trait domain.Trait, flavor uint16) string {
-	story := render("training.intro", flavor, 0) + " " +
-		render(trainingEncounterKey(enc), flavor, 37) + ". " +
-		render("training.outcome", flavor, 71)
+	story := render(trainingEncounterKey(enc), flavor, 37) + ". "
+	ending := render("training.outcome", flavor, 71)
 	if key := traitReactionKey(trait); key != "" {
-		story += " " + render(key, flavor, 89)
+		ending = render(key, flavor, 89)
 	}
 	if flavor%100 == 0 {
-		story += " " + render("training.absurd", flavor, 113)
+		ending = render("training.absurd", flavor, 113)
 	}
-	return story
+	return story + ending
 }
 
 func render(key string, flavor uint16, salt uint64) string {

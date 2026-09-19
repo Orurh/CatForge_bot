@@ -64,7 +64,7 @@ func TestCatFollowupRepliesAsRememberedCat(t *testing.T) {
 	if err != nil || !matched {
 		t.Fatalf("Reply() matched/error = %v/%v", matched, err)
 	}
-	if result == nil || result.Cat.ID != 42 || result.Cat.Name != "Барсик" || !strings.Contains(result.Generation.Text, "Батон") {
+	if result == nil || result.Cat.ID != 42 || result.Cat.Name != "Барсик" || !strings.Contains(result.Generation.Text, "ИИ недоступен") {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if quota.calls != 1 {

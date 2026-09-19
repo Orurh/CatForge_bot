@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 const maxProviderErrorBody = 2048
@@ -33,7 +32,8 @@ func NewOpenAIProvider(apiKey, baseURL, model string, client *http.Client) (*Ope
 		baseURL = "https://api.openai.com/v1"
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		// The generation context supplied by Gateway owns the request deadline.
+		client = &http.Client{}
 	}
 	return &OpenAIProvider{
 		apiKey: apiKey, baseURL: strings.TrimRight(baseURL, "/"), model: model, client: client,

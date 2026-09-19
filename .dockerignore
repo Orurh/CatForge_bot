@@ -15,3 +15,5 @@ backups
 
 .monitoring-secrets/
 .codex-bridge/
+.deploy/
+**/__pycache__/

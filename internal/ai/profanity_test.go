@@ -12,6 +12,7 @@ func TestCensorProfanity(t *testing.T) {
 		{"Блядь, охуеть! Заебали, нахуй, пиздец.", "Б***, о***! З***, н***, п***."},
 		{"бля сука ёбаный хуйню", "б*** с*** ё*** х***"},
 		{"Страхуй корабля, употреблять хлеб, учебник, рубля, мебель.", "Страхуй корабля, употреблять хлеб, учебник, рубля, мебель."},
+		{"Сам по себе. На себя. Себя не забыл?", "Сам по себе. На себя. Себя не забыл?"},
 		{"Бл***, на х***!\nП***ец.", "Бл***, на х***!\nП***ец."},
 	} {
 		if got := censorProfanity(tc.input); got != tc.want {
@@ -25,7 +26,7 @@ func TestGatewayCensorsBothProviders(t *testing.T) {
 		primary := &stubProvider{name: "primary", result: ProviderResult{Text: "Блядь, опять."}}
 		backup := &stubProvider{name: "backup", result: ProviderResult{Text: "Блядь, опять."}}
 		primary.result.Blocked = fallback
-		got, err := NewGateway(primary, backup, nil, time.Second).GenerateCatReply(context.Background(), GenerationRequest{HumorMode: HumorBold})
+		got, err := NewGateway(primary, backup, nil, time.Second).Generate(context.Background(), GenerationRequest{Type: GenerationAutonomousCat, HumorMode: HumorBold})
 		if err != nil || got.Text != "Б***, опять." || got.Fallback != fallback {
 			t.Fatalf("%+v %v", got, err)
 		}
@@ -33,7 +34,7 @@ func TestGatewayCensorsBothProviders(t *testing.T) {
 }
 
 func TestEveryPromptDefinesHumorMode(t *testing.T) {
-	for _, kind := range []GenerationType{GenerationCatReply, GenerationHumanReplyToCat, GenerationArenaBanter, GenerationYardBanter, GenerationTrainingNarrative, GenerationEventNarrative, GenerationWeeklySummary, GenerationAutonomousCat, GenerationFirstPersonalityLine} {
+	for _, kind := range []GenerationType{GenerationCatReply, GenerationHumanReplyToCat, GenerationArenaBanter, GenerationYardBanter, GenerationTrainingNarrative, GenerationEventNarrative, GenerationWeeklySummary, GenerationAutonomousCat, GenerationFirstPersonalityLine, GenerationBedtimeFarewell} {
 		bold := BuildPrompt(GenerationRequest{Type: kind, HumorMode: HumorBold})
 		normal := BuildPrompt(GenerationRequest{Type: kind, HumorMode: HumorNormal})
 		if !strings.Contains(bold.System, "Разрешён запиканный мат") || !strings.Contains(bold.System, "Никогда не пиши мат целиком") {
@@ -41,6 +42,19 @@ func TestEveryPromptDefinesHumorMode(t *testing.T) {
 		}
 		if strings.Contains(normal.System, "Разрешён запиканный мат") || !strings.Contains(normal.System, "Normal — ирония без мата") {
 			t.Errorf("normal instructions absent for %s", kind)
+		}
+	}
+}
+
+func TestCatReplyPromptRequiresAResponseToDirectInsults(t *testing.T) {
+	prompt := BuildPrompt(GenerationRequest{Type: GenerationCatReply, HumorMode: HumorBold})
+	for _, phrase := range []string{
+		"это не просьба о поддержке",
+		"обязательно дай короткий встречный подкол",
+		"Не проявляй сочувствие",
+	} {
+		if !strings.Contains(prompt.System, phrase) {
+			t.Errorf("direct-insult contract missing %q", phrase)
 		}
 	}
 }

@@ -180,6 +180,9 @@ func (s *YardEventService) Resolve(ctx context.Context, eventID int64) (bool, er
 	}
 	relationships, _ := s.yards.ListRelationships(ctx, input.Event.YardID)
 	narrativeRequest := eventNarrativeRequest(input, result, relationships)
+	if yard, err := s.yards.GetByID(ctx, input.Event.YardID); err == nil && yard != nil {
+		narrativeRequest.HumorMode = yard.HumorMode
+	}
 	generation := ai.Generation{}
 	if s.voice != nil {
 		generation, _ = s.voice.GenerateEventNarrative(ctx, narrativeRequest)
@@ -311,7 +314,7 @@ func eventNarrativeRequest(input domain.YardEventResolutionInput, result domain.
 		))
 	}
 	return ai.GenerationRequest{
-		YardID: input.Event.YardID, HumorMode: ai.HumorNormal, EventFacts: facts,
+		YardID: input.Event.YardID, HumorMode: ai.HumorBold, EventFacts: facts,
 		Relationships: relationshipContextsAmong(participantIDs, relationships),
 		Event: &ai.EventContext{
 			EventType: string(input.Event.Type), OutcomeTier: string(result.OutcomeTier), TeamScore: result.TeamScore,

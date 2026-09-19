@@ -30,6 +30,12 @@ import (
 func init() { rand.Seed(time.Now().UnixNano()) }
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == "aicheck" {
+		if err := runAICheck(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
 		client := &http.Client{Timeout: 4 * time.Second}
 		resp, err := client.Get("http://127.0.0.1:8080/readyz")
@@ -108,6 +114,7 @@ func main() {
 	quota := postgres.NewAIQuotaRepo(pool)
 	catMessageRefs := postgres.NewCatMessageRefRepo(pool)
 	yards := postgres.NewYardRepo(pool)
+	yards.SetBanterInterval(cfg.BanterInterval)
 	yardEvents := postgres.NewYardEventRepo(pool, engine)
 	fights := postgres.NewFightRepo(pool, engine)
 	items := postgres.NewItemRepo(pool)
@@ -119,6 +126,12 @@ func main() {
 	telegramEvents := tg.NewTelegramGameEventSink(sender, catMessageRefs, logger.With(logx.String("component", "telegram_events")))
 	events := app.NewGameEventFanout(eventStore, telegramEvents)
 	var aiProvider ai.Provider
+	if cfg.AIProvider == "deepseek" {
+		aiProvider, err = ai.NewDeepSeekProvider(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModel, nil)
+		if err != nil {
+			log.Fatalf("DeepSeek provider: %v", err)
+		}
+	}
 	if cfg.AIProvider == "openai" {
 		aiProvider, err = ai.NewOpenAIProvider(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModel, nil)
 		if err != nil {
@@ -132,9 +145,13 @@ func main() {
 		}
 	}
 	voice := ai.NewGateway(aiProvider, ai.NewFallbackProvider(), postgres.NewAIUsageRepo(pool), cfg.AITimeout)
+	voice.SetConversationMemory(postgres.NewConversationMemoryRepo(pool))
 	logger.Info("AI gateway configured", logx.String("provider", cfg.AIProvider))
 
 	a := app.New(users, cats, personalities, quota, catMessageRefs, yards, yardEvents, fights, items, updates, engine, voice, clock, rng, events)
+	a.ChatContext = postgres.NewChatContextRepo(pool)
+	a.CatBanter.SetChatContext(a.ChatContext)
+	a.CatBanter.SetQuietHours(cfg.BanterTimezone, cfg.BanterQuietStart, cfg.BanterQuietEnd)
 	a.Payments = app.NewPaymentService(postgres.NewPaymentRepo(pool), clock, cfg.PaymentSupportContact)
 	go runPaymentThanks(ctx, a.Payments, sender, logger)
 	go runYardEventResolver(ctx, a.YardEvent, logger.With(logx.String("component", "yard_event_resolver")))
@@ -219,11 +236,11 @@ func runCatBanterScheduler(ctx context.Context, service *app.CatBanterService, l
 		count, err := service.RunDue(ctx, 20)
 		observability.Observe("worker", "banter", started, err)
 		if err != nil && ctx.Err() == nil {
-			logger.Warn("idle cat banter scheduling failed", logx.Any("err", err))
+			logger.Warn("scheduled cat speech failed", logx.Any("err", err))
 			return
 		}
 		if count > 0 {
-			logger.Info("idle cat banter published", logx.Int("count", count))
+			logger.Info("scheduled cat speech published", logx.Int("count", count))
 		}
 	}
 	run()

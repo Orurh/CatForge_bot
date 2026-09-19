@@ -1,0 +1,18 @@
+# Isolated integration dependencies. No game bot, real tokens, or host volumes.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: catforge_ci
+      POSTGRES_PASSWORD: catforge_ci
+      POSTGRES_DB: catforge_ci
+    ports: ["127.0.0.1::5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catforge_ci -d catforge_ci"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs: [/var/lib/postgresql/data]
+  game-engine:
+    image: catforge-ci-engine:${CI_IMAGE_TAG:?CI_IMAGE_TAG is required}
+    ports: ["127.0.0.1::50051"]

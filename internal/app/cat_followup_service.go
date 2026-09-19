@@ -99,7 +99,8 @@ func (s *CatFollowupService) Reply(ctx context.Context, userID, chatID int64, so
 	relationships, _ := s.yards.ListRelationships(ctx, yard.ID)
 
 	generation, err := s.voice.Generate(ctx, ai.GenerationRequest{
-		Type: ai.GenerationHumanReplyToCat,
+		ChatID: chatID,
+		Type:   ai.GenerationHumanReplyToCat,
 		Cat: ai.CatContext{
 			ID: ref.CatID, Name: speaker.CatName, Breed: speaker.Breed, Trait: personality.Trait,
 			SpeechStyle: personality.SpeechStyle,

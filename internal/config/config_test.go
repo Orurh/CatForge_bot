@@ -127,3 +127,23 @@ func TestLoadAcceptsOpenAIConfiguration(t *testing.T) {
 		t.Fatalf("unexpected AI config: model=%q timeout=%s", cfg.AIModel, cfg.AITimeout)
 	}
 }
+
+func TestLoadDeepSeekConfiguration(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "dev")
+	t.Setenv("AI_PROVIDER", "deepseek")
+	t.Setenv("AI_API_KEY", "test-key")
+	t.Setenv("AI_MODEL", "deepseek-v4-flash")
+	t.Setenv("AI_BASE_URL", "https://example.test/v1")
+	if _, err := Load(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"AI_API_KEY", "AI_MODEL", "AI_BASE_URL"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, "")
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("%s: %v", name, err)
+			}
+		})
+	}
+}

@@ -15,10 +15,12 @@ const (
 	GenerationHumanReplyToCat      GenerationType = "human_reply_to_cat"
 	GenerationEventNarrative       GenerationType = "event_narrative"
 	GenerationAutonomousCat        GenerationType = "autonomous_cat"
+	GenerationBedtimeFarewell      GenerationType = "bedtime_farewell"
 	GenerationTrainingNarrative    GenerationType = "training_narrative"
 	GenerationArenaBanter          GenerationType = "arena_banter"
 	GenerationYardBanter           GenerationType = "yard_banter"
 	GenerationWeeklySummary        GenerationType = "weekly_summary"
+	GenerationChatReaction         GenerationType = "chat_reaction"
 )
 
 type HumorMode = domain.HumorMode
@@ -135,6 +137,9 @@ type ArenaBanterContext struct {
 }
 
 type YardBanterContext struct {
+	Scene            string
+	Topic            string
+	Variation        uint64
 	Trigger          string
 	EventType        string
 	OutcomeTier      string
@@ -150,6 +155,9 @@ type YardBanterContext struct {
 }
 
 type GenerationRequest struct {
+	ChatID          int64
+	RecentSpeech    []SpeechMemory
+	RecentChat      []ChatMessage
 	Type            GenerationType
 	Cat             CatContext
 	OtherCat        CatContext
@@ -164,6 +172,13 @@ type GenerationRequest struct {
 	Training        *TrainingContext
 	ArenaBanter     *ArenaBanterContext
 	YardBanter      *YardBanterContext
+}
+
+// ChatMessage is a short, untrusted excerpt of a group conversation. It is
+// supplied only as a cue for a cat's joke or reaction.
+type ChatMessage struct {
+	Author string
+	Text   string
 }
 
 type Prompt struct {

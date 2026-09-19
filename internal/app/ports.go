@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"catforge/internal/ai"
 	"catforge/internal/domain"
 	"catforge/internal/pkg/randx"
 )
@@ -78,9 +79,20 @@ type YardRepository interface {
 }
 
 // IdleBanterYardRepository is implemented by persistent yard stores that can
-// select yards whose deterministic 24-48 hour banter window is due.
+// select and claim yards whose configured conversation interval is due.
 type IdleBanterYardRepository interface {
 	ListIdleBanterCandidates(ctx context.Context, now, activeSince time.Time, limit int) ([]domain.Yard, error)
+}
+
+type ChatContextRepository interface {
+	Remember(ctx context.Context, chatID int64, author, text string, now time.Time) error
+	Recent(ctx context.Context, chatID int64, limit int) ([]ai.ChatMessage, error)
+}
+
+// BedtimeYardRepository stores one farewell attempt per yard and quiet-period start.
+type BedtimeYardRepository interface {
+	ListBedtimeCandidates(ctx context.Context, now, sleepAt, activeSince time.Time, limit int) ([]domain.Yard, error)
+	ClaimBedtimeFarewell(ctx context.Context, yardID, catID int64, now, sleepAt time.Time) (bool, error)
 }
 
 type YardEventRepository interface {

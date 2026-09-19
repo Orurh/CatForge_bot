@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	yardMemberDisplayLimit       = 30
-	yardRelationshipDisplayLimit = 5
+	yardMemberDisplayLimit       = 5
+	yardRelationshipDisplayLimit = 3
 )
 
 func formatYardSnapshot(snapshot app.YardSnapshot) string {
