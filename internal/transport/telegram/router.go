@@ -21,16 +21,16 @@ import (
 )
 
 type Router struct {
-	groupCooldowns GroupCooldownStore
-	app            *app.App
-	send           *Sender
-	publicBaseURL  string
-	botUsername    string
-	webhookSecret  string
-    catPhotoEnabled bool
-    catPhotoReviewerID int64
-    catPhotoCanaryID int64
-	log            logx.Logger
+	groupCooldowns     GroupCooldownStore
+	app                *app.App
+	send               *Sender
+	publicBaseURL      string
+	botUsername        string
+	webhookSecret      string
+	catPhotoEnabled    bool
+	catPhotoReviewerID int64
+	catPhotoCanaryID   int64
+	log                logx.Logger
 }
 
 func NewRouter(app *app.App, send *Sender, publicBaseURL, botUsername, webhookSecret string, log logx.Logger) *Router {
@@ -217,9 +217,14 @@ func (r *Router) onMessage(ctx context.Context, m *Message) {
 		return
 	}
 	cmd, args := parseCommandForBot(m.Text, r.botUsername)
-    if cmd=="/photoqueue" {r.photoQueue(ctx,tgc);return}
+	if cmd == "/photoqueue" {
+		r.photoQueue(ctx, tgc)
+		return
+	}
 	if cmd == "" {
-        if r.tryConsumeCatPhoto(ctx,tgc,m) {return}
+		if r.tryConsumeCatPhoto(ctx, tgc, m) {
+			return
+		}
 		if tgc.chatType == "group" || tgc.chatType == "supergroup" {
 			author := strings.TrimSpace(m.From.FirstName)
 			if author == "" {
@@ -320,10 +325,10 @@ func (r *Router) handlePersonalCommand(ctx context.Context, tgc *tgCtx, cmd, arg
 	}
 	switch cmd {
 	case "/photo":
-        r.requestCatPhoto(ctx,tgc)
-    case "/photoqueue":
-        r.photoQueue(ctx,tgc)
-    case "/support":
+		r.requestCatPhoto(ctx, tgc)
+	case "/photoqueue":
+		r.photoQueue(ctx, tgc)
+	case "/support":
 		if strings.TrimSpace(args) == "" {
 			r.showSupport(ctx, tgc)
 		} else {
@@ -394,7 +399,7 @@ func (r *Router) renderPublicProfile(ctx context.Context, tgc *tgCtx) {
 		return
 	}
 	arena, _ := r.app.Profile.ArenaStats(ctx, cat.ID)
-	r.sendPhotoKB(ctx, tgc.chatID, r.catPhotoURL(ctx,cat), views.FormatCatProfileWithArena(cat, tgc.now, arena), nil)
+	r.sendPhotoKB(ctx, tgc.chatID, r.catPhotoURL(ctx, cat), views.FormatCatProfileWithArena(cat, tgc.now, arena), nil)
 }
 
 func (r *Router) handleYardCommand(ctx context.Context, tgc *tgCtx, cmd string, message *Message) {
@@ -908,8 +913,13 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 		r.log.Warn("callback ignored", logx.Any("err", err))
 		return
 	}
-	if r.handleCatPhotoAdminCallback(ctx,cbc,cq.ID) {return}
-    if !r.allowGroupCallback(ctx, cbc, cq.ID) {
+	if r.handleCatPhotoPreviewCallback(ctx, cbc, cq.ID) {
+		return
+	}
+	if r.handleCatPhotoAdminCallback(ctx, cbc, cq.ID) {
+		return
+	}
+	if !r.allowGroupCallback(ctx, cbc, cq.ID) {
 		return
 	}
 	if strings.HasPrefix(cbc.data, CBYardChoicePrefix) {
@@ -949,8 +959,11 @@ func (r *Router) onCallback(ctx context.Context, cq *CallbackQuery) {
 		return
 	}
 
-	if cbc.data=="photo:request" {r.requestCatPhoto(ctx,&cbc.tgCtx);return}
-    if strings.HasPrefix(cbc.data, "support:") {
+	if cbc.data == "photo:request" {
+		r.requestCatPhoto(ctx, &cbc.tgCtx)
+		return
+	}
+	if strings.HasPrefix(cbc.data, "support:") {
 		r.supportCallback(ctx, cbc, cq.ID)
 		return
 	}
@@ -1186,12 +1199,12 @@ func (r *Router) renderProfileTo(ctx context.Context, userID int64, now time.Tim
 		personality, _ = r.app.Personality.Get(ctx, cat.ID)
 	}
 	kb := ProfileKeyboard(userID, personality)
-    if r.catPhotoAllowedForUser(ctx, userID) {
-        rows := kb["inline_keyboard"].([][]map[string]any)
-        photoRow := []map[string]any{{"text": "📷 Сменить фото", "callback_data": PersonalCallback(userID, "photo:request")}}
-        rows = append(rows[:len(rows)-1], append([][]map[string]any{photoRow}, rows[len(rows)-1:]...)...)
-        kb["inline_keyboard"] = rows
-    }
+	if r.catPhotoAllowedForUser(ctx, userID) {
+		rows := kb["inline_keyboard"].([][]map[string]any)
+		photoRow := []map[string]any{{"text": "📷 Сменить фото", "callback_data": PersonalCallback(userID, "photo:request")}}
+		rows = append(rows[:len(rows)-1], append([][]map[string]any{photoRow}, rows[len(rows)-1:]...)...)
+		kb["inline_keyboard"] = rows
+	}
 	if cat.Level >= 2 && len(entries) > 0 {
 		caption += "\n\n🎒 Снаряжение"
 		for _, entry := range entries {
@@ -1203,7 +1216,7 @@ func (r *Router) renderProfileTo(ctx context.Context, userID int64, now time.Tim
 		kb["inline_keyboard"] = append(rows, []map[string]any{{"text": "🎒 Предметы", "callback_data": PersonalCallback(userID, CBCollection)}})
 	}
 	s := screen{
-		photoURL: r.catPhotoURL(ctx,cat),
+		photoURL: r.catPhotoURL(ctx, cat),
 		caption:  caption,
 		kb:       kb,
 	}

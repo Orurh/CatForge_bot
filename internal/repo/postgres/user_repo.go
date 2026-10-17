@@ -48,10 +48,10 @@ func (r *UserRepo) SetPendingAction(ctx context.Context, userID int64, action st
 func (r *UserRepo) GetPendingInput(ctx context.Context, userID, chatID int64) (*app.PendingInput, error) {
 	var input app.PendingInput
 	err := r.pool.QueryRow(ctx, `
-		SELECT user_id, telegram_chat_id, kind, prompt_message_id, expires_at
+		SELECT user_id, telegram_chat_id, kind, prompt_message_id, expires_at, payload
 		FROM pending_inputs
 		WHERE user_id = $1 AND telegram_chat_id = $2 AND expires_at > now()
-	`, userID, chatID).Scan(&input.UserID, &input.ChatID, &input.Kind, &input.PromptMessageID, &input.ExpiresAt)
+	`, userID, chatID).Scan(&input.UserID, &input.ChatID, &input.Kind, &input.PromptMessageID, &input.ExpiresAt, &input.Payload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -63,13 +63,13 @@ func (r *UserRepo) GetPendingInput(ctx context.Context, userID, chatID int64) (*
 
 func (r *UserRepo) SavePendingInput(ctx context.Context, input app.PendingInput) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO pending_inputs (user_id, telegram_chat_id, kind, prompt_message_id, expires_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO pending_inputs (user_id, telegram_chat_id, kind, prompt_message_id, expires_at, payload)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (user_id, telegram_chat_id) DO UPDATE
 		SET kind = EXCLUDED.kind,
 		    prompt_message_id = EXCLUDED.prompt_message_id,
-		    expires_at = EXCLUDED.expires_at
-	`, input.UserID, input.ChatID, input.Kind, input.PromptMessageID, input.ExpiresAt)
+		    expires_at = EXCLUDED.expires_at, payload = EXCLUDED.payload
+	`, input.UserID, input.ChatID, input.Kind, input.PromptMessageID, input.ExpiresAt, input.Payload)
 	return err
 }
 

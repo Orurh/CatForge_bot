@@ -37,6 +37,7 @@ type UserRepository interface {
 }
 
 type PendingInput struct {
+	Payload         string
 	UserID          int64
 	ChatID          int64
 	Kind            string

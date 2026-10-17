@@ -13,6 +13,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"catforge/internal/assets"
@@ -20,6 +21,8 @@ import (
 )
 
 type Sender struct {
+	photoMu    sync.Mutex
+	photoCards []photoCardCache
 	token      string
 	http       *http.Client
 	apiBaseURL string
@@ -189,7 +192,7 @@ func (s *Sender) PhotoWithKeyboard(ctx context.Context, chatID int64, photoURL, 
 	// Telegram expects an object when reply_markup is present. In multipart,
 	// marshaling nil sends the literal string "null", which rejects the photo.
 	markup := marshalString(kb)
-	if isEmbeddedPhoto(photoURL) {
+	if isEmbeddedPhoto(photoURL) || strings.HasPrefix(photoURL, photoCardPrefix) {
 		fields := map[string]string{"chat_id": strconv.FormatInt(chatID, 10), "caption": caption}
 		if markup != "null" {
 			fields["reply_markup"] = markup
@@ -204,7 +207,7 @@ func (s *Sender) PhotoWithKeyboard(ctx context.Context, chatID int64, photoURL, 
 }
 
 func (s *Sender) EditMediaWithKeyboard(ctx context.Context, chatID int64, messageID int, photoURL, caption string, kb any) error {
-	if isEmbeddedPhoto(photoURL) {
+	if isEmbeddedPhoto(photoURL) || strings.HasPrefix(photoURL, photoCardPrefix) {
 		media := map[string]any{"type": "photo", "media": "attach://photo", "caption": caption}
 		return s.callMultipart(ctx, "editMessageMedia", photoURL, map[string]string{
 			"chat_id":      strconv.FormatInt(chatID, 10),
@@ -229,14 +232,22 @@ func (s *Sender) EditMediaWithKeyboard(ctx context.Context, chatID int64, messag
 func (s *Sender) callMultipart(ctx context.Context, method, photoURL string, fields map[string]string) (resultErr error) {
 	started := time.Now()
 	defer func() { observability.Observe("telegram", "send", started, resultErr) }()
-	parsed, err := url.Parse(photoURL)
-	if err != nil {
-		return fmt.Errorf("parse embedded photo path: %w", err)
+	var photo []byte
+	var assetPath string
+	var err error
+	if strings.HasPrefix(photoURL, photoCardPrefix) {
+		photo, err = s.photoCard(ctx, photoURL)
+		assetPath = "cat-card.jpg"
+	} else {
+		var parsed *url.URL
+		parsed, err = url.Parse(photoURL)
+		if err == nil {
+			assetPath = strings.TrimPrefix(parsed.Path, "/")
+			photo, err = assets.FS.ReadFile(assetPath)
+		}
 	}
-	assetPath := strings.TrimPrefix(parsed.Path, "/")
-	photo, err := assets.FS.ReadFile(assetPath)
 	if err != nil {
-		return fmt.Errorf("read embedded photo %q: %w", assetPath, err)
+		return fmt.Errorf("prepare photo: %w", err)
 	}
 
 	var body bytes.Buffer
