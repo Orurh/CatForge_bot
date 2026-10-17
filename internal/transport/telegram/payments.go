@@ -35,7 +35,7 @@ func (r *Router) preCheckout(ctx context.Context, q *PreCheckoutQuery) error {
     ok:=false
     var err error
     if strings.HasPrefix(q.InvoicePayload,"photo:") {
-        if r.app.CatPhotos!=nil {ok,err=r.app.CatPhotos.Checkout(checkCtx,q.ID,app.CatPhotoPayment{TelegramID:q.From.ID,Currency:q.Currency,Stars:q.TotalAmount,Payload:q.InvoicePayload})}
+        if r.catPhotoEnabled && r.app.CatPhotos!=nil {ok,err=r.app.CatPhotos.Checkout(checkCtx,q.ID,app.CatPhotoPayment{TelegramID:q.From.ID,Currency:q.Currency,Stars:q.TotalAmount,Payload:q.InvoicePayload})}
     } else {ok,err = r.app.Payments.ApproveCheckout(checkCtx, q.ID, app.PaymentReceipt{TelegramID: q.From.ID, Currency: q.Currency, Stars: q.TotalAmount, Payload: q.InvoicePayload})}
 	cancel()
 	if err != nil {
