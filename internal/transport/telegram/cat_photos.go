@@ -15,9 +15,20 @@ import (
 
 const catPhotoPendingKind = "await_cat_photo"
 
-func (r *Router) ConfigureCatPhotos(enabled bool,reviewerID int64) {
+func (r *Router) ConfigureCatPhotos(enabled bool,reviewerID,canaryID int64) {
     r.catPhotoEnabled = enabled && reviewerID>0
     r.catPhotoReviewerID = reviewerID
+    r.catPhotoCanaryID = canaryID
+}
+// A nonzero canary ID restricts access to one Telegram user in production.
+func catPhotoCanaryAllows(canaryID, telegramID int64) bool {
+    return canaryID == 0 || telegramID == canaryID
+}
+func (r *Router) catPhotoAllowedForUser(ctx context.Context, userID int64) bool {
+    if !r.catPhotoEnabled || r.app.CatPhotos == nil { return false }
+    if r.catPhotoCanaryID == 0 { return true }
+    telegramID, err := r.app.CatPhotos.TelegramUserID(ctx, userID)
+    return err == nil && catPhotoCanaryAllows(r.catPhotoCanaryID, telegramID)
 }
 func (r *Router) catPhotoURL(ctx context.Context,cat *domain.Cat)string{
     original:=views.CatAvatarURL(r.publicBaseURL,cat)
@@ -29,7 +40,7 @@ func (r *Router) catPhotoURL(ctx context.Context,cat *domain.Cat)string{
 }
 func (r *Router) requestCatPhoto(ctx context.Context,tgc *tgCtx){
     if tgc.chatType!="private" {r.openPrivatePersonalUI(ctx,tgc);return}
-    if !r.catPhotoEnabled||r.app.CatPhotos==nil {r.sendText(ctx,tgc.chatID,"Смена фотографии временно недоступна.");return}
+    if !r.catPhotoEnabled||r.app.CatPhotos==nil || !catPhotoCanaryAllows(r.catPhotoCanaryID,tgc.tgID) {r.sendText(ctx,tgc.chatID,"Смена фотографии временно недоступна.");return}
     cat,err:=r.app.Profile.GetCat(ctx,tgc.userID)
     if err!=nil||cat==nil{r.sendText(ctx,tgc.chatID,"Сначала создай кота через /start.");return}
     open,err:=r.app.CatPhotos.OpenForUser(ctx,tgc.userID)
@@ -47,7 +58,7 @@ func (r *Router) requestCatPhoto(ctx context.Context,tgc *tgCtx){
     }
 }
 func (r *Router) tryConsumeCatPhoto(ctx context.Context,tgc *tgCtx,m *Message)bool{
-    if !r.catPhotoEnabled||r.app.CatPhotos==nil||tgc.chatType!="private"||m==nil||len(m.Photo)==0{return false}
+    if !r.catPhotoEnabled||r.app.CatPhotos==nil||tgc.chatType!="private"||!catPhotoCanaryAllows(r.catPhotoCanaryID,tgc.tgID)||m==nil||len(m.Photo)==0{return false}
     pending,err:=r.app.Users.GetPendingInput(ctx,tgc.userID,tgc.chatID)
     if err!=nil||pending==nil||pending.Kind!=catPhotoPendingKind{return false}
     photo:=m.Photo[len(m.Photo)-1]
