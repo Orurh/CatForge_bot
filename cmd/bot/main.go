@@ -153,12 +153,14 @@ func main() {
 	a.CatBanter.SetChatContext(a.ChatContext)
 	a.CatBanter.SetQuietHours(cfg.BanterTimezone, cfg.BanterQuietStart, cfg.BanterQuietEnd)
 	a.Payments = app.NewPaymentService(postgres.NewPaymentRepo(pool), clock, cfg.PaymentSupportContact)
+    a.CatPhotos = app.NewCatPhotoService(postgres.NewCatPhotoRepo(pool),clock)
 	go runPaymentThanks(ctx, a.Payments, sender, logger)
 	go runYardEventResolver(ctx, a.YardEvent, logger.With(logx.String("component", "yard_event_resolver")))
 	go runCatBanterScheduler(ctx, a.CatBanter, logger.With(logx.String("component", "cat_banter_scheduler")))
 
 	router := tg.NewRouter(a, sender, cfg.PublicBaseURL, cfg.BotUsername, cfg.WebhookSecret, logger.With(logx.String("component", "telegram_router")))
 	router.SetGroupCooldownStore(postgres.NewGroupCooldownRepo(pool))
+    router.ConfigureCatPhotos(cfg.CatPhotoReviewEnabled,cfg.CatPhotoReviewerID)
 	telegramBot := tg.New(a, cfg.TelegramToken, cfg.PublicBaseURL, cfg.WebhookPath, cfg.WebhookSecret)
 	if err := telegramBot.RegisterCommands(ctx); err != nil {
 		logger.Warn("Telegram command menu registration failed", logx.Any("err", err))
