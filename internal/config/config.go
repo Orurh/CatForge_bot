@@ -10,6 +10,8 @@ import (
 )
 
 type Config struct {
+    CatPhotoReviewEnabled bool
+    CatPhotoReviewerID int64
 	BanterInterval                   time.Duration
 	BanterTimezone                   *time.Location
 	BanterQuietStart, BanterQuietEnd int
@@ -54,6 +56,8 @@ func Load() (Config, error) {
 		CodexBridgeSocket:     strings.TrimSpace(getenv("CODEX_BRIDGE_SOCKET", "/run/codex-bridge/bridge.sock")),
 	}
 	var err error
+    c.CatPhotoReviewEnabled = strings.EqualFold(getenv("CAT_PHOTO_REVIEW_ENABLED","false"),"true")
+    if c.CatPhotoReviewEnabled { c.CatPhotoReviewerID,err=strconv.ParseInt(getenv("CAT_PHOTO_REVIEWER_TELEGRAM_ID",""),10,64);if err!=nil||c.CatPhotoReviewerID<=0{return Config{},fmt.Errorf("CAT_PHOTO_REVIEWER_TELEGRAM_ID must be positive when cat photos are enabled")} }
 	c.BanterInterval, err = time.ParseDuration(getenv("CAT_BANTER_INTERVAL", "2h"))
 	if err != nil || c.BanterInterval < time.Minute {
 		return Config{}, fmt.Errorf("CAT_BANTER_INTERVAL must be at least 1m")
