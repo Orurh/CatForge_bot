@@ -235,8 +235,11 @@ type Message struct {
 	From              *User            `json:"from,omitempty"`
 	Chat              *Chat            `json:"chat,omitempty"`
 	Text              string           `json:"text,omitempty"`
+    Photo []TelegramPhoto `json:"photo,omitempty"`
 	ReplyToMessage    *Message         `json:"reply_to_message,omitempty"`
 }
+
+type TelegramPhoto struct { FileID string `json:"file_id"`; FileSize int64 `json:"file_size,omitempty"`; Width int `json:"width"`; Height int `json:"height"` }
 
 type CallbackQuery struct {
 	ID      string   `json:"id"`
