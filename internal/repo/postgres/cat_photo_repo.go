@@ -116,7 +116,7 @@ func (r *CatPhotoRepo) RecordPayment(ctx context.Context,p app.CatPhotoPayment,n
     state:="paid"
     if p.Refunded{state="refunded"}
     _,err=tx.Exec(ctx,`INSERT INTO cat_photo_payments(request_id,telegram_id,invoice_payload,currency,stars,telegram_payment_charge_id,status,review_reason,refunded_at)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,CASE WHEN $7='refunded' THEN $9 ELSE NULL END)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,CASE WHEN $7='refunded' THEN $9::timestamptz ELSE NULL END)
          ON CONFLICT(telegram_payment_charge_id) DO NOTHING`,storedReq,p.TelegramID,p.Payload,p.Currency,p.Stars,p.ChargeID,state,reason,now)
     if err!=nil{return err}
     var id int64;var previous string;var storedTG int64;var storedStars int;var storedPayload,storedCurrency,storedStatus string
