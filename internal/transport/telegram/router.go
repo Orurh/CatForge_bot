@@ -29,6 +29,7 @@ type Router struct {
 	webhookSecret  string
     catPhotoEnabled bool
     catPhotoReviewerID int64
+    catPhotoCanaryID int64
 	log            logx.Logger
 }
 
@@ -1185,7 +1186,7 @@ func (r *Router) renderProfileTo(ctx context.Context, userID int64, now time.Tim
 		personality, _ = r.app.Personality.Get(ctx, cat.ID)
 	}
 	kb := ProfileKeyboard(userID, personality)
-    if r.catPhotoEnabled {
+    if r.catPhotoAllowedForUser(ctx, userID) {
         rows := kb["inline_keyboard"].([][]map[string]any)
         photoRow := []map[string]any{{"text": "📷 Сменить фото", "callback_data": PersonalCallback(userID, "photo:request")}}
         rows = append(rows[:len(rows)-1], append([][]map[string]any{photoRow}, rows[len(rows)-1:]...)...)
