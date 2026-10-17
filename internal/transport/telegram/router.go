@@ -1185,7 +1185,12 @@ func (r *Router) renderProfileTo(ctx context.Context, userID int64, now time.Tim
 		personality, _ = r.app.Personality.Get(ctx, cat.ID)
 	}
 	kb := ProfileKeyboard(userID, personality)
-    if r.catPhotoEnabled { rows:=kb["inline_keyboard"].([][]map[string]any); kb["inline_keyboard"]=append(rows[:len(rows)-1], append([][]map[string]any{{{"text":"📷 Сменить фото", "callback_data":PersonalCallback(userID,"photo:request")}},rows[len(rows)-1:]...)...) }
+    if r.catPhotoEnabled {
+        rows := kb["inline_keyboard"].([][]map[string]any)
+        photoRow := []map[string]any{{"text": "📷 Сменить фото", "callback_data": PersonalCallback(userID, "photo:request")}}
+        rows = append(rows[:len(rows)-1], append([][]map[string]any{photoRow}, rows[len(rows)-1:]...)...)
+        kb["inline_keyboard"] = rows
+    }
 	if cat.Level >= 2 && len(entries) > 0 {
 		caption += "\n\n🎒 Снаряжение"
 		for _, entry := range entries {
