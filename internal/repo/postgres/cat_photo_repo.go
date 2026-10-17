@@ -85,7 +85,7 @@ func (r *CatPhotoRepo) CreateInvoice(ctx context.Context,requestID,telegramID in
     if status!=app.CatPhotoAwaitingPayment||telegramID!=actualTG{return inv,app.ErrCatPhotoConflict}
     err=tx.QueryRow(ctx,`INSERT INTO cat_photo_invoices(request_id,telegram_id,invoice_payload,stars,expires_at)
         VALUES($1,$2,$3,10,$4) ON CONFLICT(request_id) DO UPDATE SET request_id=EXCLUDED.request_id
-        RETURNING request_id,telegram_id,invoice_payload,stars,expires_at`,requestID,telegramID,payload,now.Add(24*time.Hour)).
+        RETURNING request_id,telegram_id,invoice_payload,stars,expires_at`,requestID,telegramID,payload,now.Add(30*24*time.Hour)).
         Scan(&inv.RequestID,&inv.TelegramID,&inv.Payload,&inv.Stars,&inv.ExpiresAt)
     if err!=nil{return inv,err}
     return inv,tx.Commit(ctx)
