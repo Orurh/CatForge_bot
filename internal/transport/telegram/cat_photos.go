@@ -252,10 +252,19 @@ func (r *Router) handleCatPhotoAdminCallback(ctx context.Context, cbc *cbCtx, ca
 	}
 	result, err := r.app.CatPhotos.Review(ctx, id, r.catPhotoReviewerID, parts[3] == "yes")
 	if err != nil {
-		_ = r.send.AnswerCallbackText(ctx, callbackID, "Не удалось обработать или заявка уже закрыта.")
+		if errors.Is(err, app.ErrCatPhotoConflict) && photoReviewStatusText(result.Request.Status) != "" {
+			// The repository returns the persisted state while holding the row lock.
+			// Never repeat player notifications or invoices for a closed request.
+			r.showPhotoReviewDecision(ctx, cbc, callbackID, result.Request)
+		} else if errors.Is(err, app.ErrCatPhotoNotFound) {
+			_ = r.send.AnswerCallbackText(ctx, callbackID, "Заявка не найдена.")
+		} else {
+			r.log.Warn("cat photo review failed")
+			_ = r.send.AnswerCallbackText(ctx, callbackID, "Не удалось проверить решение. Попробуй ещё раз.")
+		}
 		return true
 	}
-	_ = r.send.AnswerCallbackText(ctx, callbackID, "Решение сохранено.")
+	r.showPhotoReviewDecision(ctx, cbc, callbackID, result.Request)
 	userID, err := r.app.CatPhotos.TelegramUserID(ctx, result.Request.UserID)
 	if err != nil {
 		r.log.Warn("photo review owner lookup failed")
@@ -274,6 +283,39 @@ func (r *Router) handleCatPhotoAdminCallback(ctx context.Context, cbc *cbCtx, ca
 	}
 	return true
 }
+
+// A completed request is historical: a later request may have replaced its photo.
+func photoReviewStatusText(status app.CatPhotoStatus) string {
+	switch status {
+	case app.CatPhotoApplied:
+		return "✅ Фото по этой заявке одобрено и установлено."
+	case app.CatPhotoAwaitingPayment:
+		return "✅ Фото одобрено. Ожидается оплата 10 ⭐."
+	case app.CatPhotoRejected:
+		return "❌ Фото по этой заявке отклонено."
+	case app.CatPhotoSuperseded:
+		return "Заявка закрыта: кот изменился до решения."
+	case app.CatPhotoRefunded:
+		return "По этой заявке оформлен возврат оплаты."
+	default:
+		return ""
+	}
+}
+
+func (r *Router) showPhotoReviewDecision(ctx context.Context, cbc *cbCtx, callbackID string, req app.CatPhotoRequest) {
+	text := photoReviewStatusText(req.Status)
+	_ = r.send.AnswerCallbackText(ctx, callbackID, text)
+	err := r.send.Call(ctx, "editMessageCaption", map[string]any{
+		"chat_id": cbc.chatID, "message_id": cbc.msgID,
+		"caption":      fmt.Sprintf("📷 Заявка #%d\n%s", req.ID, text),
+		"reply_markup": map[string]any{"inline_keyboard": [][]map[string]any{}},
+	})
+	// A duplicate callback may target an already updated moderator card.
+	if err != nil && !strings.Contains(err.Error(), "message is not modified") {
+		r.log.Warn("photo review card update failed; decision remains saved")
+	}
+}
+
 func (r *Router) sendCatPhotoInvoice(ctx context.Context, telegramID, requestID int64) {
 	invoice, err := r.app.CatPhotos.CreateInvoice(ctx, requestID, telegramID)
 	if err != nil {
