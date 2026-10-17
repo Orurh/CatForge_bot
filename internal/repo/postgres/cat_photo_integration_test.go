@@ -58,7 +58,13 @@ func TestCatPhotoModerationAndStarsIntegration(t *testing.T) {
     var count int
     if err=pool.QueryRow(ctx,`SELECT count(*) FROM cat_photo_payments WHERE invoice_payload=$1`,invoice.Payload).Scan(&count);err!=nil||count!=1{t.Fatalf("duplicate charge ledger: %d %v",count,err)}
     if err=photos.RecordPayment(ctx,app.CatPhotoPayment{TelegramID:987601,Currency:"XTR",Stars:10,Payload:"missing",ChargeID:"unknown-charge"});!errors.Is(err,app.ErrPaymentMismatch){t.Fatalf("unknown receipt: %v",err)}
-    if err=cats.DeleteByUserID(ctx,uid);err!=nil{t.Fatal(err)}
+    refund:=pay
+    refund.Refunded=true
+    if err=photos.RecordPayment(ctx,refund);err!=nil{t.Fatalf("refund: %v",err)}
+    if current,err:=photos.Current(ctx,uid,cat.ID);err!=nil||current!=""{t.Fatalf("refunded photo still active: %q %v",current,err)}
+    if err=photos.RecordPayment(ctx,pay);err!=nil{t.Fatalf("late receipt: %v",err)}
+    if current,_:=photos.Current(ctx,uid,cat.ID);current!=""{t.Fatalf("late receipt resurrected refunded photo: %q",current)}
+        if err=cats.DeleteByUserID(ctx,uid);err!=nil{t.Fatal(err)}
     fresh,err:=cats.Create(ctx,uid,"Другой кот",domain.BreedBritish,domain.TraitLazy,60,40,30,25)
     if err!=nil{t.Fatal(err)}
     if current,err:=photos.Current(ctx,uid,fresh.ID);err!=nil||current!=""{t.Fatalf("old photo leaked to new cat: %q %v",current,err)}
