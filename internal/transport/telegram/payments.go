@@ -32,7 +32,11 @@ func (r *Router) preCheckout(ctx context.Context, q *PreCheckoutQuery) error {
 	}
 	// Keep DB work bounded separately so a slow database still leaves time to reject.
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	ok, err := r.app.Payments.ApproveCheckout(checkCtx, q.ID, app.PaymentReceipt{TelegramID: q.From.ID, Currency: q.Currency, Stars: q.TotalAmount, Payload: q.InvoicePayload})
+    ok:=false
+    var err error
+    if strings.HasPrefix(q.InvoicePayload,"photo:") {
+        if r.catPhotoEnabled && r.app.CatPhotos!=nil {ok,err=r.app.CatPhotos.Checkout(checkCtx,q.ID,app.CatPhotoPayment{TelegramID:q.From.ID,Currency:q.Currency,Stars:q.TotalAmount,Payload:q.InvoicePayload})}
+    } else {ok,err = r.app.Payments.ApproveCheckout(checkCtx, q.ID, app.PaymentReceipt{TelegramID: q.From.ID, Currency: q.Currency, Stars: q.TotalAmount, Payload: q.InvoicePayload})}
 	cancel()
 	if err != nil {
 		r.log.Error("payment checkout validation failed", logx.Any("err", err))
@@ -65,7 +69,11 @@ func (r *Router) paymentReceipt(ctx context.Context, m *Message) (resultErr erro
 	}
 	// Private-chat ID identifies the payer even when a refund service message
 	// is sent by Telegram/the bot rather than by the original user.
-	err := r.app.Payments.RecordReceipt(ctx, app.PaymentReceipt{TelegramID: m.Chat.ID, Currency: p.Currency, Stars: p.TotalAmount, Payload: p.InvoicePayload, ChargeID: p.ChargeID, Refunded: refunded})
+	var err error
+    if strings.HasPrefix(p.InvoicePayload,"photo:") {
+        if r.app.CatPhotos==nil {return errors.New("cat photo payment repo unavailable")}
+        err=r.app.CatPhotos.RecordPayment(ctx,app.CatPhotoPayment{TelegramID:m.Chat.ID,Currency:p.Currency,Stars:p.TotalAmount,Payload:p.InvoicePayload,ChargeID:p.ChargeID,Refunded:refunded})
+    } else {err = r.app.Payments.RecordReceipt(ctx, app.PaymentReceipt{TelegramID: m.Chat.ID, Currency: p.Currency, Stars: p.TotalAmount, Payload: p.InvoicePayload, ChargeID: p.ChargeID, Refunded: refunded})}
 	if errors.Is(err, app.ErrPaymentMismatch) {
 		r.log.Error("payment receipt saved for review")
 		observability.Observe("payments", "review", started, err)
