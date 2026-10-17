@@ -131,7 +131,8 @@ func (r *CatPhotoRepo) RecordPayment(ctx context.Context,p app.CatPhotoPayment,n
     }
     if p.Refunded{
         if _,err=tx.Exec(ctx,`UPDATE cat_photo_payments SET status='refunded',refunded_at=COALESCE(refunded_at,$2) WHERE id=$1`,id,now);err!=nil{return err}
-        if _,err=tx.Exec(ctx,`UPDATE cat_photo_requests SET status='refunded' WHERE id=$1 AND status='awaiting_payment'`,reqID);err!=nil{return err}
+        if _,err=tx.Exec(ctx,`UPDATE cat_photo_state SET current_cat_id=NULL,current_file_id=NULL,current_request_id=NULL WHERE current_request_id=$1`,reqID);err!=nil{return err}
+        if _,err=tx.Exec(ctx,`UPDATE cat_photo_requests SET status='refunded' WHERE id=$1 AND status IN ('awaiting_payment','applied')`,reqID);err!=nil{return err}
     }else if storedStatus!="refunded"{
         // Serialize with review and competing requests on the same user.
         var userID,catID int64;var fileID string;var status app.CatPhotoStatus
