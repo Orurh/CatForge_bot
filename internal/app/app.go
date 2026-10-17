@@ -10,6 +10,7 @@ import (
 
 type App struct {
 	Payments    *PaymentService
+    CatPhotos *CatPhotoService
 	Users       UserRepository
 	Clock       Clock
 	RNG         RNG
