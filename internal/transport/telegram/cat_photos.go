@@ -59,8 +59,7 @@ func (r *Router) tryConsumeCatPhoto(ctx context.Context,tgc *tgCtx,m *Message)bo
     if err!=nil||cat==nil{r.sendText(ctx,tgc.chatID,"Кот не найден.");return true}
     req,err:=r.app.CatPhotos.Submit(ctx,tgc.userID,cat.ID,photo.FileID)
     if err!=nil{
-        if errors.Is(err,app.ErrCatPhotoPending){r.sendText(ctx,tgc.chatID,"Заявка уже ожидает рассмотрения.")}
-        else {r.sendText(ctx,tgc.chatID,"Не удалось сохранить заявку. Попробуй позже.")}
+        if errors.Is(err,app.ErrCatPhotoPending){r.sendText(ctx,tgc.chatID,"Заявка уже ожидает рассмотрения.")} else {r.sendText(ctx,tgc.chatID,"Не удалось сохранить заявку. Попробуй позже.")}
         return true
     }
     _=r.app.Users.ClearPendingInput(ctx,tgc.userID,tgc.chatID)
