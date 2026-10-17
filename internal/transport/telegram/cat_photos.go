@@ -50,10 +50,10 @@ func (r *Router) requestCatPhoto(ctx context.Context,tgc *tgCtx){
         r.sendText(ctx,tgc.chatID,"Твоя фотография уже ожидает проверки. Отменить отправленную заявку пока нельзя.")
         return
     }
-    _,err=r.send.ForceReply(ctx,tgc.chatID,
+    promptMessageID,err:=r.send.ForceReply(ctx,tgc.chatID,
         "📷 Пришли фото кота ответом на это сообщение.\n\nПервое одобренное изменение бесплатно. Следующие — по 10 ⭐ после модерации.\n\nНе присылай фотографии людей, чужие приватные данные или запрещённые изображения. Модератор увидит фото до публикации.\n\nОтмена: /skip.","Фото кота")
     if err!=nil{r.sendText(ctx,tgc.chatID,"Не удалось запросить фото.");return}
-    if err=r.app.Users.SavePendingInput(ctx,app.PendingInput{UserID:tgc.userID,ChatID:tgc.chatID,Kind:catPhotoPendingKind,ExpiresAt:tgc.now.Add(15*time.Minute)});err!=nil{
+    if err=r.app.Users.SavePendingInput(ctx,app.PendingInput{UserID:tgc.userID,ChatID:tgc.chatID,Kind:catPhotoPendingKind,PromptMessageID:int64(promptMessageID),ExpiresAt:tgc.now.Add(15*time.Minute)});err!=nil{
         r.sendText(ctx,tgc.chatID,"Не удалось сохранить запрос. Попробуй /photo позже.")
     }
 }
