@@ -148,3 +148,18 @@ func (r *CatPhotoRepo) RecordPayment(ctx context.Context,p app.CatPhotoPayment,n
     }
     return tx.Commit(ctx)
 }
+
+func (r *CatPhotoRepo) OpenForUser(ctx context.Context,userID int64)(*app.CatPhotoRequest,error) {
+    var p app.CatPhotoRequest
+    err:=r.pool.QueryRow(ctx,`SELECT id,user_id,cat_id,file_id,status FROM cat_photo_requests
+        WHERE user_id=$1 AND status IN ('pending','awaiting_payment') ORDER BY id DESC LIMIT 1`,userID).
+        Scan(&p.ID,&p.UserID,&p.CatID,&p.FileID,&p.Status)
+    if errors.Is(err,pgx.ErrNoRows){return nil,nil}
+    if err!=nil{return nil,err}
+    return &p,nil
+}
+func (r *CatPhotoRepo) TelegramUserID(ctx context.Context,userID int64)(int64,error) {
+    var id int64
+    err:=r.pool.QueryRow(ctx,`SELECT telegram_id FROM users WHERE id=$1`,userID).Scan(&id)
+    return id,err
+}
