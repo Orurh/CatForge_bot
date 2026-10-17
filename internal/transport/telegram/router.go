@@ -216,6 +216,7 @@ func (r *Router) onMessage(ctx context.Context, m *Message) {
 		return
 	}
 	cmd, args := parseCommandForBot(m.Text, r.botUsername)
+    if cmd=="/photoqueue" {r.photoQueue(ctx,tgc);return}
 	if cmd == "" {
         if r.tryConsumeCatPhoto(ctx,tgc,m) {return}
 		if tgc.chatType == "group" || tgc.chatType == "supergroup" {
@@ -319,6 +320,8 @@ func (r *Router) handlePersonalCommand(ctx context.Context, tgc *tgCtx, cmd, arg
 	switch cmd {
 	case "/photo":
         r.requestCatPhoto(ctx,tgc)
+    case "/photoqueue":
+        r.photoQueue(ctx,tgc)
     case "/support":
 		if strings.TrimSpace(args) == "" {
 			r.showSupport(ctx, tgc)
